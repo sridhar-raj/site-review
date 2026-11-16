@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean page</title>
+<meta name="description" content="A page with no layout bugs, used to check the review has no false alarms.">
+<style>
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 80px; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; }
+  header { position: sticky; top: 0; height: 64px; background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 16px; padding: 0 16px; z-index: 10; }
+  header a, button { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; }
+  .hero { min-height: 80svh; background: #eef; padding: 40px 16px; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 4rem); line-height: 1.1; margin: 0 0 16px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
+  .card { background: #f4f4f4; border: 1px solid #ccc; padding: 16px; border-radius: 12px; }
+  .card img { width: 100%; height: auto; aspect-ratio: 16/9; display: block; border-radius: 8px; background: #ccd; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tags span { padding: 4px 10px; background: #ddd; border-radius: 999px; }
+  .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #555; }
+  button { background: #111; color: #fff; border: 0; border-radius: 8px; cursor: pointer; transition: background-color 150ms ease-out; }
+  button:hover { background: #333; }
+  button:focus-visible, a:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  #target { margin-top: 300px; }
+  @media (max-width: 767.98px) { .m { color: #444; } }
+  @media (min-width: 768px) { .m { color: #222; } }
+</style>
+</head>
+<body>
+<header><a href="#target">Jump</a><a href="#">About</a></header>
+<section class="hero"><h1>A clean page with nothing broken</h1><button>Start free</button></section>
+<main>
+  <div class="grid">
+    <div class="card"><img alt="One" width="320" height="180" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'/%3E"><h3>Card one</h3><p class="ellipsis" title="An excerpt that is allowed to truncate with an ellipsis because it is secondary">An excerpt that is allowed to truncate with an ellipsis because it is secondary</p></div>
+    <div class="card"><img alt="Two" width="320" height="180" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'/%3E"><h3>Card two</h3><p>Plain text that wraps normally inside the card.</p></div>
+    <div class="card"><img alt="Three" width="320" height="180" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'/%3E"><h3>Card three</h3><p>More text that wraps.</p></div>
+  </div>
+  <div class="tags"><span>One</span><span>Two</span><span>Three</span></div>
+  <p class="m">No breakpoint clash here.</p>
+  <h2 id="target">Anchor target</h2>
+<div style="height:1400px"></div>
+</main>
+</body>
+</html>

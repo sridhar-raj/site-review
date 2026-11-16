@@ -6,7 +6,7 @@
 //   node site-review.mjs <url | file.html> [--out dir] [--pages /,/pricing] [--max-sections 12]
 //        [--desktop 1440x900] [--phone 390x844] [--no-sections] [--hero]
 //
-//   --hero   the first screen only (no full page, no sections): fast, for judging a hero or a revamp
+//   --hero   the first screen only (no full page, no sections): fast, for judging a hero
 //
 // Needs Playwright (or playwright-core with a Chromium) in the current project: pnpm add -D playwright
 

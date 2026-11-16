@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Interaction bugs on purpose</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; padding: 24px; min-height: 2400px; }
+  button { font: inherit; }
+  .plain { background: #111; color: #fff; border: 0; padding: 12px 18px; cursor: pointer; }                 /* no hover state */
+  .grow { background: #eee; border: 0; padding: 12px 18px; cursor: pointer; }
+  .grow:hover { border: 3px solid #111; }                                                                   /* hover moves layout */
+  .all { background: #2563eb; color: #fff; border: 0; padding: 12px 18px; cursor: pointer; transition: all 300ms; }
+  .all:hover { background: #1d4ed8; }                                                                       /* transition: all */
+  .divbtn { display: inline-block; background: #fde68a; padding: 12px 18px; }                               /* clickable div, arrow cursor */
+  .divbtn:hover { background: #fcd34d; }
+  .noring { background: #16a34a; color: #fff; border: 0; padding: 12px 18px; cursor: pointer; outline: none; } /* no focus ring */
+  .noring:hover { background: #15803d; }
+  .icons { display: flex; gap: 2px; margin-top: 16px; }
+  .icons button { width: 16px; height: 16px; padding: 0; border: 0; background: #999; cursor: pointer; }    /* tiny, crowded */
+  .icons button:hover { background: #666; }
+  input { font-size: 14px; padding: 8px; }                                                                  /* iOS zoom */
+  .card { position: relative; width: 260px; height: 140px; background: #f4f4f4; margin-top: 16px; }
+  .card .reveal { opacity: 0; position: absolute; bottom: 8px; left: 8px; }
+  .card:hover .reveal { opacity: 1; }                                                                       /* hover-only */
+  .spin { width: 24px; height: 24px; background: #f0f; animation: spin 1s linear infinite; margin-top: 16px; } /* ignores reduced motion */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  dialog { padding: 24px; }
+</style>
+</head>
+<body>
+<button class="plain">No hover</button>
+<button class="grow">Hover grows</button>
+<button class="all">Transition all</button>
+<div class="divbtn" onclick="void 0">Clickable div</div>
+<button class="noring">No focus ring</button>
+<div class="icons"><button aria-label="a"></button><button aria-label="b"></button><button aria-label="c"></button></div>
+<p><input placeholder="Email"></p>
+<div class="card"><button class="reveal">Hidden action</button></div>
+<div class="spin"></div>
+<p><button id="open" aria-haspopup="dialog" aria-controls="dlg">Open dialog</button></p>
+<div id="dlg" role="dialog" aria-modal="true" hidden style="position:fixed;inset:20% 30%;background:#fff;border:1px solid #333;padding:24px">
+  <p>A dialog that ignores Escape and doesn't lock scrolling.</p><button id="close">Close</button>
+</div>
+<script>
+  const d = document.getElementById("dlg");
+  document.getElementById("open").onclick = () => { d.hidden = false; document.body.style.overflow = "hidden"; };   // removes the scrollbar: page jumps
+  document.getElementById("close").onclick = () => { d.hidden = true; document.body.style.overflow = ""; };
+</script>
+</body>
+</html>

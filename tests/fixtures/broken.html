@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Broken on purpose</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; }
+  header { position: sticky; top: 0; height: 72px; background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 16px; padding: 0 16px; z-index: 10; }
+  .hero { height: 100vh; background: #eef; padding: 40px 16px; }
+  .wide { width: 700px; background: #fde; padding: 8px; }                 /* overflow on phones */
+  .clip { width: 220px; white-space: nowrap; overflow: hidden; }           /* clipped heading */
+  .box { position: relative; height: 120px; }
+  .over-a { position: absolute; top: 10px; left: 0; font-size: 20px; }
+  .over-b { position: absolute; top: 18px; left: 40px; font-size: 20px; } /* text over text */
+  .cover-wrap { position: relative; }
+  .cover { position: absolute; top: 0; left: 0; width: 260px; height: 60px; background: #333; } /* covers the paragraph */
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row > div { width: 30%; min-width: 100px; height: 40px; background: #cfc; }
+  .grad { font-size: 64px; line-height: 0.9; background: linear-gradient(90deg,#f0f,#0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card { background: #f4f4f4; border: 1px solid #ccc; width: 200px; padding: 8px; }
+  .card img { width: 260px; height: 40px; display: block; background: #999; }   /* sticks out */
+  .fixedh { height: 40px; overflow: hidden; width: 160px; }               /* text cut at the bottom */
+  #target { margin-top: 400px; }
+  @media (max-width: 768px) { .m { color: red; } }
+  @media (min-width: 768px) { .m { color: blue; } }                       /* both apply at 768 */
+</style>
+</head>
+<body>
+<header><a href="#target">Jump</a><span>Nav</span></header>
+<section class="hero"><h1>Hero that uses 100vh</h1></section>
+<div class="wide">This box is 700px wide and pushes the page sideways on phones.</div>
+<h2 class="clip">A heading that is far too long for its box and gets cut</h2>
+<div class="box"><p class="over-a">Overlapping text one</p><p class="over-b">Overlapping text two</p></div>
+<div class="cover-wrap"><p>This paragraph is hidden behind a dark box that sits on top of it.</p><div class="cover"></div></div>
+<div class="row"><div></div><div></div><div></div><div></div></div>
+<p class="grad">Typography</p>
+<div class="card"><img alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='40'/%3E"><p>Card text</p></div>
+<button class="fixedh">A button label that wraps onto three lines and gets cut</button>
+<p class="m">Media query clash</p>
+<img alt="Unsized" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='200'/%3E">
+<h2 id="target">Anchor target</h2>
+<div style="height:1400px"></div>
+<div id="late"></div>
+<script>
+  // Content inserted above the fold after load (a layout shift).
+  setTimeout(() => { const b = document.createElement("div"); b.style.height = "90px"; b.style.background = "#ffd"; b.textContent = "Late banner"; document.body.insertBefore(b, document.querySelector(".hero")); }, 900);
+</script>
+</body>
+</html>
