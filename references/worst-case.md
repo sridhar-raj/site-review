@@ -58,3 +58,12 @@ These are design decisions: in a no-UI-change review, list them as suggestions r
 
 Report each break as **Broken** (unreadable, unreachable, wrong data), **Ugly** (readable but visibly wrong) or
 **Fragile** (fine now, one realistic step from breaking), with the value that caused it.
+
+## Seen in the Arcline review
+
+- A tag inside a `truncate` label: the ellipsis cut the tag, leaving a stray arc of its border. Truncate the text
+  span only; the tag `shrink-0`; on phones let the text wrap.
+- Preset and plan buttons with fixed height: a longer label ("Company-wide", "Talk to sales") wrapped over the
+  border. `whitespace-nowrap`, and room from the column.
+- A 320px placeholder 10px short of fitting: trim padding or a decorative icon under 360px, never the 16px size.
+- Value-keyed React lists: two equal values ("2 October 2026" twice) made a duplicate key. Key by label + value.

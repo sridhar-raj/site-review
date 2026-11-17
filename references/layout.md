@@ -51,6 +51,19 @@ Ellipsis and line-clamp are often intended (card excerpts). The check flags them
 | Long translations | IFix: change the shared font-size/width for all siblings |
 | A `<select>` (or `input type=button`) squeezed by a flex/grid share: the chosen option is cut, often to a letter or two ("Te" for "Template: Auto"). Its text is not a text node, so it is measured separately: option width against the room inside the padding (a custom chevron lives in `padding-right`) | `w-auto`/`min-w-[…]` for the longest option, `flex-wrap` on the row, or a shorter label on phones |
 
+### A short label wrapping inside its button — `wrapped-label`
+
+A button, tab or pill whose label (≤ 4 words) breaks onto two lines: "Pause / agents" in a top bar squeezed by
+the title beside it. Nothing is cut, so no other check sees it, but the box grows taller than its neighbours and
+reads broken. Fails on buttons and tabs, warns on boxed links and labels. Mark a deliberate two-line button with
+`data-review-allow="wrap"`.
+
+| Cause | Fix |
+|---|---|
+| A flex row with no `shrink-0` on the button: the title and the button share the squeeze | `whitespace-nowrap shrink-0` on the button; `min-w-0 truncate` on the title so it gives way |
+| A fixed or percentage width on the button | `w-auto px-3` |
+| No room at phone widths | an icon-only or shorter label below `sm` (with `aria-label`), or `flex-wrap` on the row |
+
 ### Text wider than its own button or tab — `text-overflow`
 
 With `overflow: visible` nothing is clipped, yet the text runs past the button's background: in a segmented

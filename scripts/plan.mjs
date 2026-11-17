@@ -17,9 +17,9 @@ import { compactWidths } from "./lib.mjs";
 
 const [cmd, a, b] = process.argv.slice(2).filter((x, i, arr) => !x.startsWith("--") && arr[i - 1] !== "--ids");
 const idsFlag = (() => { const i = process.argv.indexOf("--ids"); return i >= 0 ? process.argv[i + 1].split(",").map((s) => s.trim().toUpperCase()) : null; })();
-const CHECKS = ["overview", "layout", "interaction", "perf"];
+const CHECKS = ["overview", "layout", "interaction", "consistency", "seo", "cro", "perf"];
 const sev = { fail: 0, warn: 1, info: 2 };
-const LABEL = { overview: "Look & content", layout: "Layout", interaction: "Interaction & accessibility", perf: "Speed" };
+const LABEL = { overview: "Look & content", layout: "Layout", interaction: "Interaction & accessibility", consistency: "Consistency", seo: "SEO", cro: "Conversion", perf: "Speed" };
 
 function load(dir) {
   const out = [];
@@ -54,6 +54,7 @@ function propose(dir) {
 
   const desktopOnly = (w) => w.length && w.every((x) => x >= 768), phoneOnly = (w) => w.length && w.every((x) => x < 768);
   const risk = (c) => {
+    if (c.check === "seo") return "metadata, links and site files; no visual change expected (snapshots must stay identical)";
     if (c.check === "perf") return "speed only; re-measure with the same settings before claiming a win";
     if (c.check === "interaction") return /hover|focus|transition|cursor/.test(c.type) ? "the control's states; its look at rest stays the same" : "behaviour and accessibility; no visual change expected";
     if (phoneOnly(c.widths)) return `phones only (${compactWidths(c.widths)}); desktop must stay pixel-identical (compare --allow 320-767)`;

@@ -79,3 +79,19 @@ screenshot, not by the script.
 | `aria-label` that leaves out the visible text | Start the name with the visible text |
 | `aria-hidden` on something focusable, or an ancestor of it | Remove it, or make it `inert` |
 | `<img>` with no `alt` | `alt=""` or a purpose description |
+
+## Focus lessons from the Arcline review
+
+- **Global focus rules go in `@layer base`.** An unlayered `:focus-visible { outline … }` beats every Tailwind
+  `outline-none`, so a field that shows focus on its wrapper also gets a square box of its own.
+- **Never change shape on focus.** A global `border-radius` in the focus rule turned round pills square when
+  focused; the outline follows the element's own radius.
+- **Clipped rings.** Inside `overflow: hidden` or a scroller an outside ring is cut: draw it inset there
+  (`:where(.overflow-hidden, .overflow-x-auto, …) :focus-visible { outline-offset: -2px }`), and keep an outside
+  ring where the clip is far away (footer links).
+- **Fields set into a pill** (email + button): the pill shows the ring, not the input
+  (`:has(> input.outline-none:focus-visible)`).
+- **Under the sticky header (2.4.11):** give every focusable a scroll margin larger than the header; judge it after
+  the scroll settles, not mid smooth-scroll.
+- **Label in name (2.5.3):** drop an `aria-label` that reworded the visible text ("Wednesday 18 November, 3 times
+  free" for "Wed 18 3 free"); the visible text is the name.

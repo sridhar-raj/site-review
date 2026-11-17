@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- planted: no meta viewport (seo-viewport) -->
+<title>Home</title><!-- planted: generic title (seo-title-generic) -->
+<meta name="description" content="Plans and pricing for small teams that want to ship faster without hiring.">
+<meta name="robots" content="noindex, nofollow"><!-- planted: noindex on a public page (seo-noindex) -->
+<link rel="canonical" href="/pricing"><!-- planted: relative, and another page (seo-canonical) -->
+<meta property="og:title" content="Pricing">
+<meta property="og:url" content="https://example.com/other"><!-- planted: og:url ≠ canonical (seo-og-url) -->
+<meta property="og:image" content="https://example.com/share.png"><!-- planted: 600×600, no twitter:card (seo-og-size, seo-twitter-card) -->
+<link rel="alternate" hreflang="en-UK" href="https://example.com/uk"><!-- planted: invalid region, no self entry, no return link (seo-hreflang) -->
+<script type="application/ld+json">
+{ "@context": "https://schema.org", "@graph": [
+  { "@type": "Product", "name": "Team plan", "offers": { "@type": "Offer", "price": "79", "availability": "InStock" } },
+  { "@type": "BlogPosting", "headline": "Why teams switch", "datePublished": "March 3, 2026", "image": "/blog/cover.jpg", "author": { "@type": "Person", "name": "Dana Whitfield" } }
+] }
+</script><!-- planted: Product missing image and offers.priceCurrency, price 79 not on the page; availability not the enum URL;
+     BlogPosting with a non-ISO date, a relative image and an author not named on the page (seo-jsonld-required, -fact, -value) -->
+<script type="application/ld+json">{ "@type": "FAQPage", "mainEntity": [], }</script><!-- planted: trailing comma (seo-jsonld-invalid) -->
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  img { display: block; max-width: 100%; height: auto; background: #ccd; }
+</style>
+</head>
+<body>
+<header><nav><a href="clean.html">Home</a> <a href="#">Pricing</a><!-- planted: href="#" for a page (seo-link-js) --> <a href="missing-page.html">Docs</a><!-- planted: broken internal link --></nav></header>
+<main>
+  <div id="hero"></div>
+  <script>
+    // planted: the h1 and the price exist only after JS (seo-raw-missing)
+    document.getElementById("hero").innerHTML = '<h1>Pricing that grows with your team</h1><p class="price">Team plan: $49 per month</p>';
+  </script>
+  <p>Teams use it to plan, track and ship work.</p>
+  <img src="images/IMG_4021.jpg" alt="The team at the offsite" width="600" height="400"><!-- planted: camera filename (seo-image-filename) -->
+  <img src="images/3f9a0c1b2d4e5f60718293a4b5c6d7e8.png" alt="Dashboard" width="600" height="400"><!-- planted: hash filename -->
+  <ul><!-- planted: generic anchor text (seo-anchor-text) -->
+    <li>Planning <a href="clean.html">Read more</a></li>
+    <li>Tracking <a href="app.html">Learn more</a></li>
+    <li>Shipping <a href="clean.html#target">Click here</a></li>
+    <li>Reporting <a href="app.html#x">more</a></li>
+  </ul>
+</main>
+</body>
+</html>

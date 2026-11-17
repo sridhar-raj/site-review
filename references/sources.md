@@ -86,7 +86,7 @@ writing, it is marked (unverified).
 
 ## Folded-in skills
 
-Condensed and rewritten from three agent skills (read in full before use):
+Condensed and rewritten from agent skills (read in full before use). The Quality group, 17 Nov 2026:
 
 - *better-accessibility* (jakubkrehel/skills): WCAG 2.2 criteria per finding, severity rules, focus and keyboard
   patterns, the before-you-finish grep → `accessibility.md`. https://github.com/jakubkrehel/skills
@@ -95,3 +95,17 @@ Condensed and rewritten from three agent skills (read in full before use):
   https://github.com/addyosmani/web-quality-skills
 - *break-ui* (emilkowalski/skills): plausible worst-case data, the failure-signature table, truncate / wrap /
   clamp → `worst-case.md`. https://github.com/emilkowalski/skills
+- UI consistency → `consistency.md`: *imprint* (jsmastery-pro/jsm-agent-skill), *component-family-consistency*
+  and *brand-visual-language* (dembrandt/dembrandt-skills), *token-mapping* (arla6ka/design.how),
+  *interface-design* (dammyjay93/interface-design), *critique-typography*, *critique-color* and
+  *critique-brand-consistency* (owl-listener/designer-skills), *design-consistency-auditor* (shipshitdev/skills,
+  from history: removed in 258b1f91), *baseline-ui* (ibelick/ui-skills). Per-skill notes in `consistency.md`.
+- SEO → `seo.md`: *seo-audit*, *schema*, *site-architecture*, *ai-seo* (coreyhaines31/marketingskills), *seo*
+  (addyosmani/web-quality-skills), *nextjs-seo* (laguagu/claude-code-nextjs-skills), *seo-aeo-best-practices*
+  (sanity-io/agent-toolkit). Per-skill notes in `seo.md`.
+- Performance → `performance.md`, last section: *core-web-vitals*, *performance*, *best-practices*
+  (addyosmani/web-quality-skills), *performance-optimization* (addyosmani/agent-skills), *third-party*
+  (patternsdev/skills); React/Next fixes point to the installed *vercel-react-best-practices*.
+- Conversion → `conversion.md`: *cro* (was page-cro and form-cro), *signup*, *popups*, *ab-testing*, *analytics*
+  (coreyhaines31/marketingskills), *ux-heuristics* (wondelai/skills). *rams* (brianlovin/agent-config) could not
+  be found; its design-engineer checks are written from its description and say so.

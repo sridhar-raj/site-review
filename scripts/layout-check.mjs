@@ -6,7 +6,8 @@
 //
 // Widths: the site's own breakpoints (each one and 1 px below it, where layouts are most squeezed), common
 // devices, and a sweep from 320 to 1440 px every --step px. At each width: sideways scroll and its culprits,
-// clipped text (own box, clipping ancestor, cut descenders, a select's chosen option), text wider than its
+// clipped text (own box, clipping ancestor, cut descenders, a select's chosen option), short labels wrapping
+// inside their button, text wider than its
 // button or tab, text over text, text covered by other elements,
 // content sticking out of its box, items wrapping alone. Once: clashing breakpoints, sticky headers over
 // anchor targets, 100vh on phones, layout shift with its cause. Overlaps are confirmed by hiding one element
@@ -67,6 +68,27 @@ const AUDIT = () => {
     else if (cs.transform !== "none") why = "a transform pushes it past the edge";
     else if (/^(IMG|VIDEO|IFRAME|SVG|CANVAS|TABLE|PRE)$/i.test(el.tagName)) why = `${el.tagName.toLowerCase()} wider than the screen`;
     push("overflow", el, `right edge ${Math.round(r.right)}px on a ${W}px screen${why ? `: ${why}` : ""}${pageOverflow ? "" : " (hidden by overflow-x on body, still cut)"}`, { severity: pageOverflow ? "fail" : "warn", why });
+  }
+
+  // 1b. A short label that breaks onto two lines inside its button, pill or tab ("Pause / agents"): the box
+  // grows taller than its neighbours and reads broken. Judged per text node, so a title + subtitle stack is fine.
+  for (const el of document.querySelectorAll("button,a,[role=button],[role=tab],[role=menuitem],summary,label")) {
+    if (sr.ignored(el) || sr.allowed(el, "wrap") || !sr.visible(el) || sr.animating(el)) continue;
+    const label = (el.innerText || "").trim();
+    if (!label || label.includes("\n") || label.length > 32 || label.split(/\s+/).length > 4) continue;
+    const cs = getComputedStyle(el);
+    const boxed = el.matches("button,[role=button],[role=tab],[role=menuitem]") || (cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent") || parseFloat(cs.borderTopWidth) > 0;
+    if (!boxed) continue;
+    const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let lines = 0;
+    for (let n; (n = tw.nextNode());) {
+      if (!n.textContent.trim()) continue;
+      const rg = document.createRange(); rg.selectNodeContents(n);
+      const tops = [];
+      for (const r of rg.getClientRects()) if (r.width > 1 && !tops.some((t) => Math.abs(t - r.top) < r.height / 2)) tops.push(r.top);
+      lines = Math.max(lines, tops.length);
+    }
+    if (lines >= 2) push("wrapped-label", el, `"${label}" breaks onto ${lines} lines inside its ${el.tagName.toLowerCase()} (${Math.round(el.getBoundingClientRect().width)}px wide)`, { severity: sr.important(el) || el.matches("button,[role=button],[role=tab]") ? "fail" : "warn" });
   }
 
   const texts = sr.textEls();
@@ -579,6 +601,7 @@ function hint(f) {
       if (/transform/.test(f.why || "")) return "overflow-x-clip on the section that holds the moved decoration";
       if (/wider than the screen/.test(f.why || "")) return "max-w-full h-auto on media; tables and pre in overflow-x-auto";
       return "find the fixed width / min-width / nowrap on this element or its flex/grid parent; min-w-0 on flex items, minmax(0,1fr) on grid tracks";
+    case "wrapped-label": return "keep the label on one line: whitespace-nowrap shrink-0 on the button, and make the row give way instead (min-w-0 + truncate on the title beside it, flex-wrap, or an icon-only / shorter label below sm)";
     case "text-overflow": return "let the box fit its text: drop the fixed width/grid-cols share at this width (w-auto, px-3, shrink-0), shorten the label on phones (a short form in a sm:hidden span), or allow it to wrap";
     case "clipped-text":
       if (/chosen option|label "/.test(f.detail)) return "give the control room for its longest option: min-w-[…] or w-auto instead of a squeezed flex/grid share, a shorter label on phones, or let the row wrap (flex-wrap)";

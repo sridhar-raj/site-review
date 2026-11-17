@@ -59,5 +59,7 @@
   // Content inserted above the fold after load (a layout shift).
   setTimeout(() => { const b = document.createElement("div"); b.style.height = "90px"; b.style.background = "#ffd"; b.textContent = "Late banner"; document.body.insertBefore(b, document.querySelector(".hero")); }, 900);
 </script>
+<!-- wrapped-label: a short button label squeezed onto two lines by the title beside it -->
+<div style="display:flex;align-items:center;gap:12px;width:260px;margin:20px"><span style="font-size:22px">Overview of agents</span><button style="padding:6px 14px;border:1px solid #ccc;border-radius:8px;background:#fff">Pause agents</button></div>
 </body>
 </html>

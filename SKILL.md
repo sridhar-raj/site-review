@@ -4,7 +4,8 @@ description: >-
   Review a website, landing page, hero or app screen in a real browser and fix what's wrong, with proof.
   Measures responsive breakage across widths (overflow, cut or overlapping text, fragile layouts), layout
   shift, hover/focus/keyboard, menus and dialogs, touch, contrast (incl. dark and Windows contrast themes),
-  screen-reader names, and speed (LCP and why). Proposes a numbered change list to approve, fixes only what
+  screen-reader names, speed (LCP, INP and why), UI consistency (type, spacing, colour, component
+  families), SEO (page, site, structured data, AI search) and conversion (CTA, forms, popups, trust). Proposes a numbered change list to approve, fixes only what
   is approved at the root, then re-checks findings and pixel snapshots. Use when asked to review, audit, QA,
   check, critique, fix or polish a site or section, when it looks broken on mobile, jumps, feels wrong on
   hover or focus, or is slow, or when a URL or localhost is shared for an opinion.
@@ -28,6 +29,9 @@ built-in basic set runs). Any project with Playwright can review any URL.
 | "Review and fix" / "fix the mobile issues" | Review, change list, **wait for approval**, then Fix (5-6) | + 20-40 min |
 | "Just fix everything" / "fix without asking" | Review, change list, fix all of it (say so at the top of the list) | + 20-40 min |
 | "Is it slow? / make it faster" | `perf-check.mjs` (add `--field` for a public URL), then the list | 10 min + fixes |
+| "Is it consistent? / does it feel like one product" | `consistency-check.mjs`, then judge it with `references/consistency.md` | 5-10 min |
+| "SEO / will it rank / AI search" | `seo-check.mjs` (add `--crawl 10` for a site), then `references/seo.md` | 5-10 min |
+| "Why doesn't it convert? / CRO" | `cro-check.mjs`, then `references/conversion.md` for the judged parts (value prop, trust, heuristics; an A/B test when unsure) | 10-15 min |
 | "Text is cut / overlapping / broken on phones" | `layout-check.mjs` only, then the list | 5 min + fixes |
 | "Review our hero / first screen" | `site-review.mjs --hero`, then `interaction-check` and `perf-check` on it | 5-10 min |
 | An app, dashboard or tool screen | Review with `--kind app` (auto-detected; the overview says which): no CTA, SEO, share-card or template-tell checks; score States instead of Trust | 10 min a screen |
@@ -43,7 +47,7 @@ Fixing needs the site's source in the working directory. Reviewing doesn't.
 node <skill>/scripts/review.mjs http://localhost:3000 --out .review/before
 ```
 
-That runs five scripts into one folder (each can run alone with the same flags), four of them side by side and
+That runs eight scripts into one folder (each can run alone with the same flags), seven of them four at a time and
 perf alone afterwards (`--serial` for one at a time). Every finding says who it affects and its WCAG criterion.
 
 | Script | Finds | Time |
@@ -52,6 +56,9 @@ perf alone afterwards (`--serial` for one at a time). Every finding says who it 
 | `layout-check.mjs` | at every breakpoint (and 1 px below it), common devices and a 320-1440 sweep: sideways scroll and its culprit, clipped text (including a select's chosen option), text wider than its button or tab, text over text, covered text, protrusion, orphan wraps, clashing breakpoints, 100vh on phones, anchors under sticky headers, layout shift with its cause, unsized images. Overlaps are confirmed by hiding one element and diffing pixels. Then a **stress pass**: every text 30% longer and every number bigger, the audit again; what breaks only then is "fragile". Outlined screenshots in `layout-shots/` | 20-50 s |
 | `interaction-check.mjs` | hover (forced, every interactive element; the selected item is exempt, one that only looks selected is flagged), the Tab walk (focus judged by screenshot, focused vs not), custom widgets with the keyboard (clickable things Tab can't reach, fake buttons Enter/Space don't press, tabs and sliders without arrow keys), each menu/dialog opened, phone touch checks, the mobile menu after navigating, reduced motion; screen-reader basics (image names, label in name, h1, main landmark) and `reader.txt`, the page as a screen reader lists it; Windows contrast themes (borderless filled buttons, fixed-colour icons) and `forced-colors.jpg`; video captions to check; axe (or the built-in basics: names, labels, lang, heading order) | 15-45 s |
 | `perf-check.mjs` | 3 throttled cold runs (phone, Slow 4G, 4× CPU), medians, LCP split into its 4 parts with the cause, CLS, TBT, FCP blockers, images, fonts, video, third-party main-thread time, long frames, slow clicks; `--field` adds real visitors' p75 from the Chrome UX Report (public URLs only; the URL is sent to Google) | 1-2 min |
+| `consistency-check.mjs` | at 1440 and 390: distinct font sizes, type steps, weights, line heights, spacing on the 4/8 grid, text colours clustered by ΔE, accents, greys, radii, borders, shadows, control heights and radii, durations, icon sizes, the page's `:root` tokens; controls in one row at different heights, pointer cursors that do nothing, untokened colours failing contrast (the only fails; the rest are suggestions). `data-review-allow="consistency"` exempts a page or part | ~2 s |
+| `seo-check.mjs` | raw HTML vs rendered (what only JS adds), status, noindex, canonical, title, headings, links and anchors, image names, share card fetched and sized, hreflang, JSON-LD parsed with required fields per type and facts not on the page; for a URL also robots.txt, the sitemap (≤ 50 URLs checked), a made-up path that must 404, redirects, host variants; `--crawl N` for click depth and orphans. Each finding says its evidence: raw, rendered, HTTP or site | 30-60 s |
+| `cro-check.mjs` | at 1440 and 390: competing and vague CTAs, dead CTA links, CTAs covered on arrival, each form (fields, required, `autocomplete` tokens, email/tel types and `inputmode`, submit label), popups covering the phone screen (coverage, timing, Esc, close size, back after reload), trust near the CTA, analytics fired by the CTA click (observed, navigation blocked, never a real submit) | 10-16 s |
 | `snapshots.mjs` | full-page screenshots at 390, 768 and 1440, with cells that change by themselves (clocks, carousels) recorded as noise: the baseline the visual compare needs | ~15 s |
 
 Use a **production build** for performance (`next build && next start`, or the deployed URL); layout and
@@ -64,6 +71,13 @@ happens at, how many elements share it ("and 14 more like it": one shared style,
 own widths), and a fix hint.
 
 ## 2. Look (the step that makes it a review)
+
+**The pixel pass comes first, on every page and sub-page** (each legal document, each article, the 404):
+`node <skill>/scripts/chunks.mjs <url> <url>…` captures 320, 390, 768 and 1440 in screen-sized chunks after a
+slow scroll; open every chunk and read it for the defects in `references/visual-pass.md`; then
+`node <skill>/scripts/rhythm.mjs <urls>` for the gaps between sections. Scripts passed and Lighthouse said 100
+while a person still found ~30 small defects (a label wrapping in a pill, an empty column at 768, a stray arc of
+a clipped tag): find them here, not from the person's screenshots. Tablet (768) is where grid flow breaks.
 
 While the checks run, open the site yourself and read it as a first-time visitor. Then open **every**
 screenshot: both first screens, the dark one, `forced-colors.jpg`, each section, each `layout-shots/` image,
@@ -101,6 +115,17 @@ Then the two walks and a Lighthouse pass (`references/accessibility.md`):
 
 Read the stress pass with `references/worst-case.md`: each break has a signature, a cause and a fix; a choice
 between truncate, wrap and clamp is a design decision, so it goes on the list as a suggestion.
+
+Then the quality passes. The scripts measure; the references judge what no script can and give the fixes:
+- **Consistency** (`consistency.json`, `references/consistency.md`): confirm each drift on the screenshot (a
+  second size may be a deliberate role), then group it by role, not by value.
+- **SEO** (`seo.json`, `references/seo.md`, websites only): read the raw-vs-rendered findings first; on
+  localhost, URLs on the production host are compared by path, so re-run on the live URL before claiming a
+  site-file finding.
+- **Conversion** (`cro.json`, `references/conversion.md`, websites and signup flows): the script measures CTAs,
+  forms, popups and analytics; judge the value prop, trust and Nielsen's heuristics (severity 0-4) by hand.
+- **Speed beyond LCP** (`references/performance.md`, last section): INP by phase, bfcache, delivery, third
+  parties, best-practice hygiene (mixed content, console errors, security headers).
 
 Before a report, run `verdicts.mjs report`: a type under 80 % gets an extra look before it is listed. Add what
 no script sees: the hierarchy, the copy, the look (`references/rubric.md`, with its premium bar, template tells
@@ -151,6 +176,12 @@ asking, and then say so at the top of the list.
 ```bash
 node <skill>/scripts/plan.mjs approved .review/before/changes.md      # the ticked IDs, or --ids C1,C3
 ```
+
+**Installed helpers for the fix.** When an approved change is in their area, load the skill and follow it:
+`better-accessibility` (keyboard, focus, ARIA, forms in code), `break-ui` (one component's worst-case data,
+behind a demo toggle), `schema` (JSON-LD), `nextjs-seo` (metadata, sitemap.ts, robots.ts, canonicals, share
+images), `cro` (rewriting a page or form for conversion), `vercel-react-best-practices` (React and Next speed).
+The review itself stays here.
 
 ## 5. Fix (only what was approved)
 
@@ -213,8 +244,13 @@ Never claim a fix the re-run didn't confirm.
 | `scripts/site-review.mjs` | screenshots and the overview (first screen, sections, contrast, dark theme, SEO, popups, tells) |
 | `scripts/layout-check.mjs` | responsive layout across widths, layout shift, the stress pass, with visual confirmation |
 | `scripts/interaction-check.mjs` | hover, focus, keyboard widgets, overlays, touch, motion, axe or the basics |
+| `scripts/consistency-check.mjs` | one type and spacing scale, colour clusters, radii, control families, measured |
+| `scripts/seo-check.mjs` | raw vs rendered, page and site SEO, structured data, share card, `--crawl` |
+| `scripts/cro-check.mjs` | CTAs, forms, popups, trust, analytics on the click |
 | `scripts/perf-check.mjs` | throttled cold runs, LCP diagnosis, main thread, slow clicks, field data |
 | `scripts/snapshots.mjs` | full-page screenshots per width with self-changing regions recorded |
+| `scripts/chunks.mjs` | the pixel pass: every page at 320/390/768/1440 in screen-sized chunks after a slow scroll, with an index to open |
+| `scripts/rhythm.mjs` | the visible gap between every pair of sections, flagged when off the page's usual gap |
 | `scripts/compare.mjs` | before vs after: findings (fixed, still there, new) and snapshots (pixel diff per width) |
 | `scripts/plan.mjs` | the change list to approve, the approved IDs, the done report |
 | `scripts/verdicts.mjs` | record real/false per finding; precision per check type |
@@ -225,6 +261,10 @@ Never claim a fix the re-run didn't confirm.
 | `references/performance.md` | measuring honestly, field data, the LCP/JS/image/font/third-party fix playbook |
 | `references/accessibility.md` | WCAG 2.2 A/AA criteria and severity, the keyboard and screen-reader walks, Lighthouse, fix rules, the before-you-finish grep |
 | `references/worst-case.md` | realistic worst-case data, what breaks (signature → cause → fix), truncate vs wrap vs clamp |
+| `references/visual-pass.md` | what only looking finds: the defects a person caught by screenshot (cause → fix), and the measurement traps behind false findings |
+| `references/consistency.md` | one type and spacing scale, colours from tokens, control families: what to count, thresholds, fixes |
+| `references/seo.md` | page and site SEO, structured data by page type, AI-search readiness, Next.js App Router fixes |
+| `references/conversion.md` | first screen, CTA, forms, signup, popups, trust, analytics, heuristics, when to A/B test |
 | `references/rubric.md` | the six scores, the premium bar, template tells, worked examples, the hero checklist |
 | `references/sources.md` | the research behind the checks |
 | `calibration/verdicts.jsonl` | every recorded verdict (grows with use) |

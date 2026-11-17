@@ -160,7 +160,14 @@ async function focusWalk(page) {
   const seen = new Map(); let first = null; let stops = 0; let reachedEnd = false;
   for (let i = 0; i < 80; i++) {
     await page.keyboard.press("Tab");
-    await page.waitForTimeout(40);
+    // Let the scroll that focus starts settle before judging the stop: with smooth scrolling the page is
+    // mid-animation for a few hundred ms, and measuring then reports a stop "hidden under the header" that a
+    // person never sees (Arcline review: every focus-obscured finding was taken mid-scroll).
+    await page.evaluate(() => new Promise((done) => {
+      let last = scrollY, still = 0; const t0 = performance.now();
+      const tick = () => { if (scrollY === last) still++; else { still = 0; last = scrollY; } if (still >= 3 || performance.now() - t0 > 900) done(); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    }));
     const r = await page.evaluate(async () => {
       const sr = window.__sr; const el = document.activeElement;
       if (!el || el === document.body || el === document.documentElement) return { end: true };

@@ -85,7 +85,7 @@ if (isDir(a) && isDir(b)) {
     const va = JSON.parse(readFileSync(join(a, "overview.json"), "utf8")).assets || [], vb = JSON.parse(readFileSync(join(b, "overview.json"), "utf8")).assets || [];
     if (va.length && vb.length && va.join() !== vb.join()) console.log(`note: the page's files changed between the two runs (${vb.filter((x) => !va.includes(x)).slice(0, 3).join(", ")}): it was redeployed, so not every difference below comes from your fixes`);
   } catch {}
-  for (const f of ["overview.json", "layout.json", "interaction.json", "perf.json"]) if (existsSync(join(a, f)) && existsSync(join(b, f))) compareFindings(join(a, f), join(b, f));
+  for (const f of ["overview.json", "layout.json", "interaction.json", "consistency.json", "seo.json", "cro.json", "perf.json"]) if (existsSync(join(a, f)) && existsSync(join(b, f))) compareFindings(join(a, f), join(b, f));
   if (existsSync(join(a, "snapshots.json")) && existsSync(join(b, "snapshots.json"))) await compareSnapshots(a, b);
 } else compareFindings(a, b);
 process.exit(bad ? 1 : 0);

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // review.mjs: run every check on one URL (or a crawl of a site) into one folder.
 //
-//   node review.mjs <url | file.html> [--out .review/before] [--only overview,layout,interaction,perf,snapshots]
+//   node review.mjs <url | file.html> [--out .review/before] [--only overview,layout,interaction,consistency,seo,cro,perf,snapshots]
 //        [--runs 3] [--step 40] [--hero] [--kind auto|site|app] [--crawl 5] [--perf-all] [--field] [--motion]
 //        [--storage state.json] [--cookie "a=1"] [--scheme dark]
 //
 // overview → site-review.mjs (screenshots, contrast, SEO, popups, template tells) · layout → layout-check.mjs
-// interaction → interaction-check.mjs · perf → perf-check.mjs · snapshots → snapshots.mjs (for compare.mjs)
+// interaction → interaction-check.mjs · consistency → consistency-check.mjs · seo → seo-check.mjs · cro → cro-check.mjs · perf → perf-check.mjs · snapshots → snapshots.mjs (for compare.mjs)
 //
 // --crawl N   also review up to N more pages of the same site, found in the page's nav, header, footer and
 //             main links (same origin, no files or hashes). Each page gets its own folder; perf runs on the
@@ -22,9 +22,9 @@ import { parseArgs, outDir, loadChromium, newContext } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { opt, has, target } = parseArgs(["--out", "--only", "--runs", "--step", "--kind", "--crawl"]);
-if (!target) { console.error("usage: review.mjs <url | file.html> [--out .review/before] [--only overview,layout,interaction,perf,snapshots] [--runs 3] [--step 40] [--hero] [--kind auto|site|app] [--crawl 5] [--storage state.json] [--cookie a=1] [--scheme dark]"); process.exit(2); }
+if (!target) { console.error("usage: review.mjs <url | file.html> [--out .review/before] [--only overview,layout,interaction,consistency,seo,cro,perf,snapshots] [--runs 3] [--step 40] [--hero] [--kind auto|site|app] [--crawl 5] [--storage state.json] [--cookie a=1] [--scheme dark]"); process.exit(2); }
 const root = outDir(opt("--out", ".review/before"));
-const only = opt("--only", "overview,layout,interaction,perf,snapshots").split(",");
+const only = opt("--only", "overview,layout,interaction,consistency,seo,cro,perf,snapshots").split(",");
 const session = ["--storage", "--cookie", "--scheme"].flatMap((f) => (opt(f) ? [f, opt(f)] : []));
 const t0 = Date.now();
 
@@ -62,6 +62,9 @@ for (const [pi, page] of pages.entries()) {
     ["overview", "site-review.mjs", ["--out", out, "--kind", opt("--kind", "auto"), ...(has("--hero") ? ["--hero"] : [])]],
     ["layout", "layout-check.mjs", ["--out", out, "--step", opt("--step", "40"), ...(has("--motion") ? ["--motion"] : [])]],
     ["interaction", "interaction-check.mjs", ["--out", out]],
+    ["consistency", "consistency-check.mjs", ["--out", out]],
+    ["seo", "seo-check.mjs", ["--out", out]],
+    ["cro", "cro-check.mjs", ["--out", out]],
     ["perf", "perf-check.mjs", ["--out", out, "--runs", opt("--runs", "3"), ...(has("--field") ? ["--field"] : [])]],
     ["snapshots", "snapshots.mjs", ["--out", out]],
   ];
@@ -82,7 +85,8 @@ for (const [pi, page] of pages.entries()) {
       done();
     });
   });
-  const chosen = steps.filter(([name]) => only.includes(name));
+  // SEO and conversion judge marketing pages: an app screen named with --kind app skips them.
+  const chosen = steps.filter(([name]) => only.includes(name) && !(opt("--kind") === "app" && (name === "seo" || name === "cro")));
   const together = chosen.filter(([name]) => name !== "perf");
   const parallel = has("--serial") ? 1 : 4;
   for (let i = 0; i < together.length; i += parallel) await Promise.all(together.slice(i, i + parallel).map(run));

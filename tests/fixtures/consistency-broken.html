@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drifting page</title>
+<!-- Planted consistency drift for consistency-check.mjs. Every block says what it plants. -->
+<style>
+  :root { --color-text: #111111; --color-muted: #666666; --color-bg: #ffffff; --color-primary: #2563eb; --color-border: #e5e7eb; --radius: 8px; --space: 4px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--color-text); background: var(--color-bg); }
+  button, input, select { font: inherit; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+  /* 1. Twelve font sizes, adjacent steps far under 1.125×; a display heading at body leading; tight body text. */
+  .s11 { font-size: 11px; } .s13 { font-size: 13px; } .s19 { font-size: 19px; } .s21 { font-size: 21px; }
+  .s23 { font-size: 23px; } .s26 { font-size: 26px; } .s29 { font-size: 29px; } .s36 { font-size: 36px; }
+  h1 { font-size: 48px; line-height: 1.6; margin: 0 0 16px; font-weight: 800; }
+  .tight { line-height: 1.1; max-width: 60ch; }
+  /* 2. Two h2s at different sizes (role conflict). */
+  h2 { font-size: 32px; line-height: 1.2; margin: 32px 0 16px; font-weight: 700; }
+  h2.alt { font-size: 28px; }
+  /* 3. Six weights in the body family, and two extra families. */
+  .w300 { font-weight: 300; } .w500 { font-weight: 500; } .w600 { font-weight: 600; }
+  blockquote { font-family: Georgia, serif; margin: 16px 0; }
+  .fine { font-family: Verdana, sans-serif; font-size: 15px; }
+
+  /* 4. Off-grid spacing: 13, 17, 22 px on many elements. */
+  .card { padding: 13px; margin-bottom: 17px; }
+  .row { display: flex; gap: 22px; align-items: flex-start; margin: 17px 0; }
+  .meta { padding: 5px 17px; margin-top: 13px; }
+
+  /* 5. Five near-identical greys as muted text (one token, four strays). */
+  .g1 { color: #666666; } .g2 { color: #6b7280; } .g3 { color: #6a6a6a; } .g4 { color: #707070; } .g5 { color: #737373; }
+  /* 6. A hardcoded light grey off the tokens that fails contrast on white. */
+  .faint { color: #a3a3a3; }
+  /* 7. A second accent hue on links; warm and cool greys mixed. */
+  a { color: #9333ea; }
+  .warm { border: 1px solid #d9cfc1; background: #f7f0e6; }
+  .cool { border: 2px solid #cbd5e1; background: #f1f5f9; }
+
+  /* 8. Five radii besides full, three border widths, four shadows. */
+  .r3 { border-radius: 3px; background: #f4f4f4; } .r6 { border-radius: 6px; background: #f4f4f4; }
+  .r10 { border-radius: 10px; background: #f4f4f4; } .r16 { border-radius: 16px; background: #f4f4f4; }
+  .r24 { border-radius: 24px; background: #f4f4f4; }
+  .b3 { border: 3px solid #e5e7eb; }
+  .sh1 { box-shadow: 0 1px 2px rgba(0,0,0,.1); } .sh2 { box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+  .sh3 { box-shadow: 0 10px 30px rgba(0,0,0,.2); } .sh4 { box-shadow: 2px 2px 0 #111; }
+
+  /* 9. Controls: two buttons in one row at 36 and 44 px; an input and a select side by side at 40/46 px
+        with 4/12 px corners. Five transition durations and three easings. */
+  .btn { display: inline-flex; align-items: center; padding: 0 16px; border: 0; border-radius: 8px; background: var(--color-primary); color: #fff; cursor: pointer; }
+  .btn-sm { height: 36px; transition: background-color 120ms ease; }
+  .btn-md { height: 44px; transition: background-color 200ms ease-in-out; }
+  .btn-lg { height: 52px; transition: opacity 350ms linear; }
+  .btn-xl { height: 60px; transition: transform 500ms ease; }
+  .btn-ghost { height: 28px; background: transparent; color: var(--color-primary); transition: color 800ms cubic-bezier(.2,.8,.2,1); }
+  input.field { height: 40px; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0 12px; }
+  select.field { appearance: none; height: 46px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 0 32px 0 12px; background: #fff; }
+  /* 10. A badge that looks clickable (pointer cursor) and does nothing. */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; cursor: pointer; font-size: 13px; }
+  /* 11. A card and its inner button at the same 12 px radius, 12 px apart (corners not concentric). */
+  .nest { border-radius: 12px; padding: 12px; background: #f4f4f4; }
+  .nest .btn { border-radius: 12px; height: 44px; }
+  /* 12. Icons at four sizes, strokes 1.5 and 2.5 px. */
+  svg.i { fill: none; stroke: currentColor; }
+</style>
+</head>
+<body>
+<main>
+  <h1>A page assembled from parts</h1>
+  <p class="tight">This paragraph is long enough to count as body copy, and its line height is set far too tight for comfortable reading across a long measure of text.</p>
+
+  <h2>Pricing</h2>
+  <div class="row">
+    <button class="btn btn-sm">Start free</button>
+    <button class="btn btn-md">Book a demo</button>
+  </div>
+  <div class="row">
+    <input class="field" type="email" placeholder="you@company.com" aria-label="Email">
+    <select class="field" aria-label="Plan"><option>Team plan</option><option>Solo plan</option></select>
+  </div>
+  <p><button class="btn btn-lg">Large</button></p>
+  <p><button class="btn btn-xl">Extra large</button></p>
+  <p><button class="btn btn-ghost">Ghost</button></p>
+
+  <h2 class="alt">Features</h2>
+  <div class="card r3 sh1"><p class="s11 g1">Eleven pixel caption</p><p class="s13 g2 w300">Thirteen pixel note</p></div>
+  <div class="card r6 sh2"><p class="s19 g3 w500">Nineteen pixel lead</p><p class="s21 g4 w600">Twenty-one pixel title</p></div>
+  <div class="card r10 sh3"><p class="s23 g5">Twenty-three pixel title</p><p class="s26">Twenty-six pixel title</p></div>
+  <div class="card r16 sh4"><p class="s29">Twenty-nine pixel number</p><p class="s36">Thirty-six</p></div>
+  <div class="card r24 b3"><p class="meta">Meta row with odd padding</p><p class="meta faint">Last updated three days ago</p></div>
+
+  <div class="row">
+    <div class="card warm"><span class="badge">New</span> Warm grey card</div>
+    <div class="card cool">Cool grey card, <a href="#x">read more</a></div>
+  </div>
+  <blockquote>“A quote in a third family.”</blockquote>
+  <p class="fine">Fine print in a fourth family.</p>
+
+  <div class="nest"><button class="btn">Inner action</button></div>
+
+  <p>
+    <svg class="i" width="16" height="16" viewBox="0 0 16 16" stroke-width="1.5"><path d="M2 8h12"/></svg>
+    <svg class="i" width="20" height="20" viewBox="0 0 20 20" stroke-width="1.5"><path d="M2 10h16"/></svg>
+    <svg class="i" width="24" height="24" viewBox="0 0 24 24" stroke-width="2.5"><path d="M2 12h20"/></svg>
+    <svg class="i" width="28" height="28" viewBox="0 0 28 28" stroke-width="2.5"><path d="M2 14h24"/></svg>
+  </p>
+</main>
+</body>
+</html>
