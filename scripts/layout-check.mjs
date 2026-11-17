@@ -2,20 +2,27 @@
 // layout-check.mjs: find layout bugs across widths, confirm each one visually, point at the source.
 //
 //   node layout-check.mjs <url | file.html> [--out .review] [--step 40] [--widths 360,390,768,1440]
-//        [--no-confirm] [--no-cls] [--no-shots]
+//        [--no-confirm] [--no-cls] [--no-shots] [--no-stress] [--motion]
 //
 // Widths: the site's own breakpoints (each one and 1 px below it, where layouts are most squeezed), common
 // devices, and a sweep from 320 to 1440 px every --step px. At each width: sideways scroll and its culprits,
-// clipped text (own box, clipping ancestor, cut descenders), text over text, text covered by other elements,
+// clipped text (own box, clipping ancestor, cut descenders, a select's chosen option), text wider than its
+// button or tab, text over text, text covered by other elements,
 // content sticking out of its box, items wrapping alone. Once: clashing breakpoints, sticky headers over
 // anchor targets, 100vh on phones, layout shift with its cause. Overlaps are confirmed by hiding one element
 // and diffing the pixels (drops invisible ones). Each finding names its element, React component and classes.
+//
+// Stress pass (default on): the page is loaded again with every text about 30% longer and every number
+// bigger (translations run 30-40% longer; a badge goes from 7 to 1,274), and the layout audit runs again at
+// the device widths. What breaks only then is reported as "fragile" (warn), so a layout that fits today's
+// copy by a few pixels is caught before the copy changes. --motion runs with animations on (default: reduced
+// motion, so mid-animation positions don't read as bugs).
 //
 // Silence an intentional case with data-review-allow="overflow|clip|overlap|cover|protrude|wrap|all".
 
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
-import { parseArgs, toUrl, loadChromium, outDir, settle, HELPERS, installHelpers, dismissPopups, hideAndDiff, Findings } from "./lib.mjs";
+import { ident, newContext, parseArgs, toUrl, loadChromium, outDir, settle, HELPERS, installHelpers, dismissPopups, hideAndDiff, Findings } from "./lib.mjs";
 
 const { opt, has, target } = parseArgs(["--out", "--step", "--widths"]);
 if (!target) { console.error("usage: layout-check.mjs <url | file.html> [--out .review] [--step 40] [--widths 360,768,1440] [--no-confirm] [--no-cls] [--no-shots]"); process.exit(2); }
@@ -83,6 +90,12 @@ const AUDIT = () => {
       if (!clamp || important) push("clipped-text", el, `${clamp ? "line-clamped" : "cut off at the bottom"}: ${el.scrollHeight - el.clientHeight}px hidden (fixed height?)`, { severity: important ? "fail" : "warn" });
       continue;
     }
+    // Text wider than its own button, pill or tab (overflow visible): it spills past the box's background and
+    // disappears into whatever is behind (dark text past a white pill), so it reads as cut off.
+    if (!/^inline$/.test(cs.display) && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 2 && !sr.scroller(el)) {
+      const boxed = el.matches("button,a,label,[role=button],[role=tab],[role=menuitem]") || (cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent") || parseFloat(cs.borderTopWidth) > 0;
+      if (boxed) { push("text-overflow", el, `text is ${el.scrollWidth - el.clientWidth}px wider than its ${el.tagName.toLowerCase()} (${el.clientWidth}px): it runs past the box's edge`, { severity: important ? "fail" : "warn" }); continue; }
+    }
     // Clipped by an ancestor (cards with overflow-hidden, masks): compare the text's own line boxes.
     const a = sr.clipper(el);
     if (a && a !== document.body && a !== document.documentElement && !sr.scroller(el)) {
@@ -107,6 +120,27 @@ const AUDIT = () => {
       const m = c.measureText(el.innerText.split("\n").pop() || "gy");
       const half = (lh - fs) / 2;
       if (m.actualBoundingBoxDescent - (fs * 0.2 + half) > 1) push("clipped-text", el, `descenders (g, y, p) cut: line-height ${(lh / fs).toFixed(2)} with ${gradientText ? "gradient text" : "overflow hidden"}`, { severity: "warn" });
+    }
+  }
+
+  // 2b. Form controls: a select's chosen option and a button-type input's label are not text nodes in the
+  // page, so the checks above never see them. Measure the text against the room left inside the padding
+  // (a custom chevron sits in padding-right).
+  const ctx2d = document.createElement("canvas").getContext("2d");
+  for (const el of document.querySelectorAll('select, input[type=button], input[type=submit], input[type=reset]')) {
+    if (sr.ignored(el) || sr.allowed(el, "clip") || !sr.visible(el) || el.multiple || el.size > 1) continue;
+    const text = el.tagName === "SELECT" ? (el.options[el.selectedIndex]?.text || "") : el.value;
+    if (!text.trim()) continue;
+    const cs = getComputedStyle(el);
+    ctx2d.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    ctx2d.letterSpacing = cs.letterSpacing === "normal" ? "0px" : cs.letterSpacing;
+    const need = ctx2d.measureText(text).width;
+    // Native selects draw their arrow inside the content box (about 20px).
+    const arrow = el.tagName === "SELECT" && cs.appearance !== "none" ? 20 : 0;
+    const room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - arrow;
+    if (need > room + 2) {
+      const shown = Math.max(0, Math.round((room / need) * 100));
+      push("clipped-text", el, `${el.tagName === "SELECT" ? "chosen option" : "label"} "${text.slice(0, 40)}" needs ${Math.round(need)}px, has ${Math.max(0, Math.round(room))}px: ${shown}% shows`, { severity: "fail" });
     }
   }
 
@@ -188,6 +222,36 @@ const AUDIT = () => {
     rows.sort((a, b) => a.t - b.t);
     if (rows.length >= 2 && rows[rows.length - 1].n === 1 && rows[rows.length - 2].n >= 3) push("orphan-wrap", rows[rows.length - 1].el, `wraps alone onto a new line under a row of ${rows[rows.length - 2].n}`, { severity: "warn" });
   }
+  // 6. A floating element (a chat bubble, a "feedback" pill, a back-to-top button) fixed over content when the
+  // page loads. Full-width bars (headers, cookie banners) are layout and checked elsewhere; this is the small
+  // fixed thing that ends up on top of a field or a button at some widths.
+  for (const fx of document.querySelectorAll("body *")) {
+    const c = getComputedStyle(fx);
+    if (c.position !== "fixed" || !sr.visible(fx) || sr.ignored(fx) || sr.allowed(fx, "cover") || c.pointerEvents === "none" || Number(c.opacity) < 0.3 || parseInt(c.zIndex) < 0) continue;
+    const a = fx.getBoundingClientRect();
+    if (a.width >= W * 0.6 || a.width < 16 || a.height < 16 || a.bottom <= 0 || a.top >= H) continue;
+    if (fx.parentElement && getComputedStyle(fx.parentElement).position === "fixed") continue; // its fixed parent is checked
+    const under = [...document.querySelectorAll("input:not([type=hidden]),textarea,select,button,a[href],label,h1,h2,h3,p,li")].filter((e) => {
+      if (fx.contains(e) || e.contains(fx) || !sr.visible(e) || sr.ignored(e)) return false;
+      if (getComputedStyle(e).position === "fixed") return false;
+      const r = e.getBoundingClientRect(); const w = Math.min(r.right, a.right) - Math.max(r.left, a.left), h = Math.min(r.bottom, a.bottom) - Math.max(r.top, a.top);
+      return w > 4 && h > 4;
+    });
+    const outer = under.filter((e) => !under.some((o) => o !== e && o.contains(e)));
+    if (outer.length) push("floating-over-content", fx, `fixed on top of ${outer.slice(0, 3).map(sr.label).join(", ")} when the page loads`, { severity: outer.some((e) => e.matches("input,textarea,select,button,a[href]")) ? "fail" : "warn", clip: { x: a.left + scrollX, y: a.top + scrollY, width: a.width, height: a.height } });
+  }
+  // 7. A heading that breaks with one word alone on a line ("New templates and / features, / in your inbox."):
+  // usually a <br> or a fixed width meant for desktop. text-wrap: balance (or no <br> on phones) fixes it.
+  for (const h of document.querySelectorAll("h1, h2")) {
+    if (!sr.visible(h) || sr.ignored(h)) continue;
+    const words = []; const tw = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+    while (tw.nextNode()) { const t = tw.currentNode; const re = /\S+/g; let m; while ((m = re.exec(t.textContent))) { const rg = document.createRange(); rg.setStart(t, m.index); rg.setEnd(t, m.index + m[0].length); const r = rg.getBoundingClientRect(); if (r.width) words.push({ w: m[0], top: r.top }); } }
+    if (words.length < 4) continue;
+    const lines = []; for (const x of words) { const l = lines.find((y) => Math.abs(y.top - x.top) < 6); l ? l.words.push(x.w) : lines.push({ top: x.top, words: [x.w] }); }
+    lines.sort((a, b) => a.top - b.top);
+    const lone = lines.findIndex((l) => l.words.length === 1 && l.words[0].length < 16);
+    if (lines.length >= 2 && lone >= 0) push("heading-break", h, `"${lines[lone].words[0]}" sits alone on line ${lone + 1} of ${lines.length}`, { severity: "warn" });
+  }
   return { found, pageOverflow, height: document.documentElement.scrollHeight };
 };
 
@@ -214,6 +278,23 @@ const OCCLUSION = () => {
     if (hidden >= 2 && by) found.push({ type: "covered-text", ...sr.describe(el), detail: `covered by ${sr.label(by)}`, severity: sr.important(el) ? "fail" : "warn", other: sr.cssPath(by), clip: { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height } });
   }
   return found;
+};
+
+// Pseudo-localisation: lengthen each word by about 30% (repeating its own letters, so the font and script
+// stay the same) and make each number longer. Selects' options and button-type inputs too. Returns how many
+// texts were changed.
+const STRESS = () => {
+  const grow = (t) => t.replace(/\d[\d,.]*/g, (n) => n.replace(/\d/, (d) => "1" + d + "2")).replace(/\p{L}{3,}/gu, (w) => w + w.slice(-Math.ceil(w.length * 0.3)));
+  const sr = window.__sr; let n = 0;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const t of nodes) {
+    const p = t.parentElement;
+    if (!p || !t.textContent.trim() || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|CODE|PRE|KBD|TEXTAREA)$/.test(p.tagName) || p.closest("[data-review-allow~=all],[data-review-allow~=stress],svg")) continue;
+    const g = grow(t.textContent); if (g !== t.textContent) { t.textContent = g; n++; }
+  }
+  for (const i of document.querySelectorAll("input[type=button],input[type=submit],input[type=reset]")) i.value = grow(i.value);
+  return n;
 };
 
 // Breakpoints from the CSS: values, plus overlaps (max-width X with min-width X) and gaps.
@@ -285,7 +366,9 @@ const CLS_REPORT = () => {
   for (const s of worst.sort((a, b) => b.v - a.v).slice(0, 4)) {
     const moved = s.src.find((x) => x.node && x.node.nodeType === 1) || s.src[0];
     if (!moved || !moved.node || moved.node.nodeType !== 1) continue;
-    const el = moved.node; const dy = Math.round(moved.cur.y - moved.prev.y);
+    const el = moved.node; const dy = Math.round(moved.cur.y - moved.prev.y); const dx = Math.round(moved.cur.x - moved.prev.x);
+    // Sub-pixel and size-only shifts nobody sees (a badge growing by a digit): not worth a line.
+    if (s.v < 0.001 || (Math.abs(dy) < 2 && Math.abs(dx) < 2 && Math.abs(moved.cur.height - moved.prev.height) < 2 && Math.abs(moved.cur.width - moved.prev.width) < 2)) continue;
     let cause = "";
     const added = c.adds.filter((a) => a.t <= s.t + 16 && a.t > s.t - 300 && a.n.isConnected && (a.n.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)).pop();
     const font = c.fonts.find((t) => t <= s.t + 50 && t > s.t - 400);
@@ -295,7 +378,7 @@ const CLS_REPORT = () => {
     else if (added) cause = `content inserted above it after load (${sr.label(added.n)}): reserve its space or put it below`;
     else if (font && /^(P|H\d|SPAN|A|LI|DIV|BUTTON)$/.test(el.tagName)) cause = "web font swap changed the text size: next/font or size-adjust fallback, or font-display: optional";
     else if (img) cause = `an image finished loading nearby (${img.url.split("/").pop().slice(0, 40)})`;
-    items.push({ type: "layout-shift", ...sr.describe(el), detail: `moved ${dy}px at ${Math.round(s.t)}ms (shift ${s.v.toFixed(3)})${cause ? `; likely cause: ${cause}` : ""}`, severity: best > 0.1 ? "fail" : "warn" });
+    items.push({ type: "layout-shift", ...sr.describe(el), detail: `moved ${Math.abs(dy) >= Math.abs(dx) ? `${dy}px down` : `${dx}px across`} at ${Math.round(s.t)}ms (shift ${s.v.toFixed(3)})${cause ? `; likely cause: ${cause}` : ""}`, severity: best > 0.1 ? "fail" : "warn" });
   }
   // Static: images with no reserved size.
   // Would it have a height before it loads? Measure a copy with no source, same classes and attributes.
@@ -320,7 +403,7 @@ const CLS_REPORT = () => {
 
 // ── run ─────────────────────────────────────────────────────────────────────
 
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" });
+const ctx = await newContext(browser, url, { viewport: { width: 1280, height: 900 }, reducedMotion: has("--motion") ? "no-preference" : "reduce" });
 await ctx.addInitScript(HELPERS);
 const page = await ctx.newPage();
 await page.goto(url, { waitUntil: "load", timeout: 60_000 });
@@ -355,7 +438,19 @@ for (const w of widths) {
   pageH = r.height || pageH;
   for (const f of r.found) {
     if (f.clip && confirm && (f.type === "text-overlap" || f.type === "protrusion")) candidates.push({ ...f, width: w });
-    else F.add({ ...f, width: w, fix: hint(f) });
+    else F.add({ ...f, width: w, fix: hint(f), ...(f.type === "floating-over-content" ? { steps: `Open the page in a window ${w}px wide and look before scrolling: ${f.el} sits on top of the content (${f.detail.replace(/^fixed on top of /, "").replace(/ when the page loads$/, "")}).` } : {}) });
+  }
+}
+
+// Phone landscape: a short, wide screen where fixed things (a chat bubble, a feedback pill) land on the content
+// and where 100vh heroes are tight. The sweep above only uses tall screens.
+for (const [w, hh] of [[844, 390], [740, 360]]) {
+  await page.setViewportSize({ width: w, height: hh }); await page.waitForTimeout(150);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const r = await page.evaluate(AUDIT).catch(() => ({ found: [] }));
+  for (const f of r.found) {
+    if (f.type === "text-overlap" || f.type === "protrusion" || f.type === "orphan-wrap") continue; // confirmed on tall screens
+    F.add({ ...f, width: w, detail: `${f.detail} (phone landscape, ${w}×${hh})`, fix: hint(f), ...(f.type === "floating-over-content" ? { steps: `Turn a phone sideways (or make the window ${w}×${hh}) and look before scrolling: ${f.el.slice(0, 40)} sits on top of ${f.detail.replace(/^fixed on top of /, "").replace(/ when the page loads$/, "")}.` } : {}) });
   }
 }
 
@@ -372,19 +467,23 @@ for (const w of [390, 1440]) {
   await page.evaluate(() => scrollTo(0, 0));
 }
 
-// Visual confirmation: hide one side, diff the pixels; invisible "bugs" are dropped.
-let dropped = 0;
-const seenConfirm = new Set();
-for (const c of candidates.slice(0, 60)) {
-  const k = c.type + c.selector + (c.other || "");
-  if (seenConfirm.has(k)) { F.add({ ...c, confirmed: true, fix: hint(c) }); continue; }
-  seenConfirm.add(k);
+// Visual confirmation: hide one side, diff the pixels; invisible "bugs" are dropped. Candidates are grouped
+// first (one overlap seen at 40 widths is one group), and each group is confirmed once at its first width,
+// so a bug repeated across the sweep can't crowd the others out of the budget.
+let dropped = 0, unconfirmed = 0;
+const groups = new Map();
+for (const c of candidates) { const k = c.type + "|" + c.selector + "|" + (c.other || ""); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
+let budget = 60;
+for (const list of groups.values()) {
+  const c = list[0];
+  if (budget-- <= 0) { unconfirmed++; for (const x of list) F.add({ ...x, confirmed: false, fix: hint(x) }); continue; }
   await page.setViewportSize({ width: c.width, height: c.width < 600 ? 844 : 900 });
   await page.waitForTimeout(120);
   const ratio = await hideAndDiff(page, [c.other || c.selector], c.clip).catch(() => 1);
   if (ratio < 0.004) { dropped++; continue; }
-  F.add({ ...c, confirmed: true, fix: hint(c) });
+  for (const x of list) F.add({ ...x, confirmed: true, fix: hint(x) });
 }
+if (unconfirmed) console.log(`(${unconfirmed} candidate group(s) past the confirmation budget, reported unconfirmed)`);
 
 // Phone-only and once-only checks.
 await page.setViewportSize({ width: 390, height: 844 });
@@ -395,11 +494,33 @@ for (const w of [390, 1440]) {
   for (const f of await page.evaluate(ANCHORS).catch(() => [])) F.add({ ...f, width: w, fix: hint(f) });
 }
 
+// Stress: longer text, bigger numbers, the same audit at device widths. Only what is new is reported.
+let stressed = 0;
+if (!has("--no-stress")) {
+  const sp = await ctx.newPage();
+  try {
+    await sp.goto(url, { waitUntil: "load", timeout: 60_000 }); await settle(sp); await installHelpers(sp); await dismissPopups(sp);
+    stressed = await sp.evaluate(STRESS);
+    await sp.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const known = new Set(F.items.map((f) => f.type + "|" + ident(f)));
+    for (const w of [320, 375, 390, 768, 1024, 1440]) {
+      await sp.setViewportSize({ width: w, height: w < 600 ? 844 : 900 });
+      await sp.waitForTimeout(120);
+      const r = await sp.evaluate(AUDIT).catch(() => ({ found: [] }));
+      for (const f of r.found) {
+        if (known.has(f.type + "|" + ident(f)) || f.type === "orphan-wrap" || f.type === "heading-break") continue; // line breaks move with longer words by design
+        F.add({ ...f, width: w, severity: "warn", stress: true, confirmed: false, detail: `with 30% longer text and bigger numbers: ${f.detail}`, fix: hint(f) + " (fragile: fits today's copy only by a few pixels)" });
+      }
+    }
+  } catch (e) { console.log(`(stress pass skipped: ${String(e.message).split("\n")[0]})`); }
+  await sp.close();
+}
+
 // Layout shift: fresh loads on a slowed network, at phone and desktop, scrolling the page.
 let cls = {};
 if (!has("--no-cls")) {
   for (const [name, vw, vh, mobile] of [["phone", 390, 844, true], ["desktop", 1440, 900, false]]) {
-    const c2 = await browser.newContext({ viewport: { width: vw, height: vh }, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
+    const c2 = await newContext(browser, url, { viewport: { width: vw, height: vh }, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
     await c2.addInitScript(HELPERS); await c2.addInitScript(CLS_OBSERVER);
     const p2 = await c2.newPage();
     const cdp = await c2.newCDPSession(p2);
@@ -441,7 +562,8 @@ if (!has("--no-shots")) {
 await browser.close();
 const summary = F.print();
 if (dropped) console.log(`(${dropped} overlap candidate(s) dropped: hiding them changed no pixels)`);
-F.write(out, { url, widths, breakpoints: bp, cls, seconds: Math.round((Date.now() - t0) / 1000) });
+if (stressed) console.log(`(stress pass: ${stressed} texts lengthened; ${F.items.filter((f) => f.stress).length} finding(s) appear only then)`);
+F.write(out, { url, widths, breakpoints: bp, cls, stressed, seconds: Math.round((Date.now() - t0) / 1000) });
 console.log(`${Math.round((Date.now() - t0) / 1000)} s`);
 process.exit(summary.fails ? 1 : 0);
 
@@ -457,7 +579,9 @@ function hint(f) {
       if (/transform/.test(f.why || "")) return "overflow-x-clip on the section that holds the moved decoration";
       if (/wider than the screen/.test(f.why || "")) return "max-w-full h-auto on media; tables and pre in overflow-x-auto";
       return "find the fixed width / min-width / nowrap on this element or its flex/grid parent; min-w-0 on flex items, minmax(0,1fr) on grid tracks";
+    case "text-overflow": return "let the box fit its text: drop the fixed width/grid-cols share at this width (w-auto, px-3, shrink-0), shorten the label on phones (a short form in a sm:hidden span), or allow it to wrap";
     case "clipped-text":
+      if (/chosen option|label "/.test(f.detail)) return "give the control room for its longest option: min-w-[…] or w-auto instead of a squeezed flex/grid share, a shorter label on phones, or let the row wrap (flex-wrap)";
       if (/descenders/.test(f.detail)) return "leading-[1.1] or more, or pb-[0.12em] -mb-[0.12em] on gradient/clipped display text";
       if (/fixed height|bottom/.test(f.detail)) return "h-* → min-h-* (let the text set the height)";
       if (/container/.test(f.detail)) return "move overflow-hidden from the card to its media wrapper, or let the container grow";
@@ -465,6 +589,8 @@ function hint(f) {
     case "text-overlap": return "absolute text over a responsive box → stack in one grid cell ([grid-area:1/1]); fixed heights → min-h; negative margins only from md:";
     case "covered-text": return "the covering element sits above the text in paint order: move it into flow at this width (static md:absolute), or fix the z-index on the stacking-context root";
     case "protrusion": return "w-[px] → w-full max-w-…; min-w-0 on flex children; the box needs padding or min-h instead of a fixed height";
+    case "floating-over-content": return "keep it clear of the content at these widths: a smaller icon-only form below md, offset it past the content column (right: calc((100vw - content)/2 - size)), or hide it while a form is in view";
+    case "heading-break": return "text-wrap: balance on headings, and drop the <br> on small screens (or make it a <span class=\"block md:inline\">)";
     case "orphan-wrap": return "switch the layout at this width (grid-cols-2 / sm:grid-cols-3), or let items grow (basis-0 grow) so the row reflows evenly";
     case "vh-height": return "h-screen / min-h-screen → min-h-svh (h-dvh only for app shells)";
     case "anchor-under-header": return "html { scroll-padding-top: var(--header-h) } (Tailwind: scroll-pt-[72px] on <html>)";

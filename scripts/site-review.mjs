@@ -14,9 +14,10 @@ import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { newContext, HELPERS, Findings } from "./lib.mjs";
 
 const args = process.argv.slice(2);
-const VALUE_FLAGS = new Set(["--out", "--pages", "--max-sections", "--desktop", "--phone"]);
+const VALUE_FLAGS = new Set(["--out", "--pages", "--max-sections", "--desktop", "--phone", "--kind", "--storage", "--cookie", "--scheme"]);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; };
 const target = args.find((a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1]));
 if (!target) {
@@ -26,6 +27,12 @@ if (!target) {
 const outDir = resolve(opt("--out", "site-review"));
 const maxSections = Math.max(0, Number(opt("--max-sections", 12)) || 12);
 const heroOnly = args.includes("--hero");
+// site: a marketing page (CTA, SEO, share card, template tells are judged). app: a tool or dashboard screen
+// (those are skipped). auto: app when the page has no description and no share image, or looks like a tool
+// (one screen tall, tabs or form controls, no footer).
+const kindOpt = opt("--kind", "auto");
+if (!/^(auto|site|app)$/.test(kindOpt)) { console.error("--kind must be auto, site or app"); process.exit(2); }
+let kind = kindOpt === "auto" ? null : kindOpt;
 const withSections = !args.includes("--no-sections") && !heroOnly;
 const size = (s, d) => { const [w, h] = String(s).split("x").map(Number); return w > 0 && h > 0 ? { width: w, height: h } : d; };
 const VIEWS = [
@@ -46,6 +53,7 @@ const urls = pages.length && /^https?:/.test(base) ? pages.map((p) => new URL(p,
 
 mkdirSync(outDir, { recursive: true });
 const lines = [];
+const O = new Findings("overview");
 const say = (level, msg) => { lines.push(`${level.padEnd(5)} ${msg}`); console.log(`${level.padEnd(5)} ${msg}`); };
 const slug = (u) => { try { const p = new URL(u).pathname.replace(/\/+$/, "") || "/home"; return p.replace(/^\//, "").replace(/[^\w-]+/g, "-") || "home"; } catch { return "page"; } };
 
@@ -88,14 +96,39 @@ const INSPECT = (opts) => {
   // Pictures, videos and canvases anywhere on the page: text on top of one can't be measured from CSS.
   const media = [...document.querySelectorAll("img, video, canvas, picture, iframe")].filter(visible).map((m) => m.getBoundingClientRect()).filter((r) => r.width > 60 && r.height > 60);
   const overMedia = (el) => { const r = el.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2; return media.some((m) => cx > m.left && cx < m.right && cy > m.top && cy < m.bottom); };
-  const bgOf = (el) => {
-    if (overMedia(el)) return null; // text over a picture, video or canvas: judge it on the screenshot
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+  const pageBg = () => { for (const n of [document.body, document.documentElement]) { const c = rgb(getComputedStyle(n).backgroundColor); if (c && c.a > 0.9) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
+  const over = (top, under) => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
+  // Composite the background layers under a list of elements, top first, down to the first opaque one.
+  // null when a picture, video, canvas or gradient is behind the text: judge that on the screenshot.
+  const composite = (nodes, el) => {
+    const layers = [];
+    for (const n of nodes) {
+      if (n !== el && el.contains(n)) continue;
+      if (/^(IMG|VIDEO|CANVAS|IFRAME|PICTURE)$/.test(n.tagName) || n.tagName.toLowerCase() === "image") return null;
       const s = getComputedStyle(n);
-      if (s.backgroundImage && s.backgroundImage !== "none") return null; // over an image or gradient: not measurable here
-      const c = rgb(s.backgroundColor); if (c && c.a > 0.9) return c;
+      if (s.backgroundImage && s.backgroundImage !== "none") return null;
+      const c = rgb(s.backgroundColor);
+      if (c && c.a > 0.02) { layers.push(c); if (c.a > 0.98) break; }
     }
-    const b = rgb(getComputedStyle(document.body).backgroundColor); return b && b.a > 0.9 ? b : { r: 255, g: 255, b: 255, a: 1 };
+    return layers.reverse().reduce((acc, c) => over(c, acc), pageBg());
+  };
+  // What is painted under the text: the hit-test stack at the middle of its first line. This sees a selected
+  // pill or card that is a positioned sibling behind the text, not an ancestor (a segmented control).
+  const bgOf = (el) => {
+    const rg = document.createRange(); rg.selectNodeContents(el);
+    const line = [...rg.getClientRects()].find((q) => q.width > 2 && q.height > 2);
+    if (line) {
+      const x = line.left + line.width / 2, y = line.top + line.height / 2;
+      if (x > 0 && y > 0 && x < vw && y < vh) {
+        const stack = document.elementsFromPoint(x, y);
+        let i = stack.indexOf(el);
+        if (i < 0) i = stack.findIndex((n) => n.contains(el)); // pointer-events: none text: start at its nearest ancestor
+        if (i >= 0) return composite(stack.slice(i), el);
+      }
+    }
+    if (overMedia(el)) return null;
+    const chain = []; for (let n = el; n && n.nodeType === 1; n = n.parentElement) chain.push(n);
+    return composite(chain, el);
   };
 
   // Text: small sizes, contrast.
@@ -103,17 +136,28 @@ const INSPECT = (opts) => {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const seen = new Set();
   while (walker.nextNode()) { const el = walker.currentNode.parentElement; if (el && walker.currentNode.textContent.trim().length > 1 && !seen.has(el)) { seen.add(el); texts.push(el); } }
-  let small = 0; const smallSamples = []; const lowContrast = []; let unmeasured = 0; let measured = 0;
-  for (const el of texts.slice(0, 2500)) {
-    if (!visible(el)) continue;
+  let small = 0; const smallSamples = []; const smallList = []; const lowContrast = []; let unmeasured = 0; let measured = 0;
+  const who = (el) => (window.__sr ? window.__sr.describe(el) : { el: label(el) });
+  // Every text is brought into view before its background is hit-tested (scrollIntoView scrolls the window
+  // and any scrolling panel it sits in), in page order so the scrolling is mostly forward. Scroll positions
+  // are put back afterwards, so the screenshots that follow are unchanged.
+  const scrollers = [document.scrollingElement, ...[...document.querySelectorAll("body *")].filter((n) => n.scrollHeight > n.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(n).overflowY))].filter(Boolean);
+  const saved = scrollers.map((n) => [n, n.scrollTop, n.scrollLeft]);
+  const pageY = (el) => el.getBoundingClientRect().top + scrollY;
+  const queue = texts.slice(0, 2500).filter((el) => visible(el) && !(window.__sr && window.__sr.ignored(el))).sort((a, b) => pageY(a) - pageY(b));
+  for (const el of queue) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) el.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
     const s = getComputedStyle(el); const px = parseFloat(s.fontSize);
-    if (px < 12) { small++; if (smallSamples.length < 5) smallSamples.push(`${label(el)} ${px}px`); }
-    const fg = rgb(s.color); const bg = bgOf(el);
+    if (px < 12) { small++; if (smallSamples.length < 5) smallSamples.push(`${label(el)} ${px}px`); if (smallList.length < 40) smallList.push({ ...who(el), size: px }); }
+    let fg = rgb(s.color); const bg = bgOf(el);
     if (!fg) continue; if (!bg) { unmeasured++; continue; }
+    if (fg.a < 1) fg = over(fg, bg);
     measured++;
-    const r = ratio(fg, bg); const large = px >= 24 || (px >= 18.66 && Number(s.fontWeight) >= 700);
-    if (r < (large ? 3 : 4.5)) lowContrast.push({ el: label(el), ratio: Math.round(r * 100) / 100, size: px });
+    const cr = ratio(fg, bg); const large = px >= 24 || (px >= 18.66 && Number(s.fontWeight) >= 700);
+    if (cr < (large ? 3 : 4.5)) lowContrast.push({ ...who(el), label: label(el), ratio: Math.round(cr * 100) / 100, size: px, need: large ? 3 : 4.5 });
   }
+  for (const [n, t, l] of saved) { n.scrollTop = t; n.scrollLeft = l; }
 
   // Tap targets (phone).
   const taps = [];
@@ -147,8 +191,12 @@ const INSPECT = (opts) => {
     const filled = (rgb(s.backgroundColor)?.a ?? 0) > 0.5 || (s.backgroundImage && s.backgroundImage !== "none");
     return filled && r.height >= 32 && r.width >= 80 && (el.innerText || "").trim().length > 1 && !el.closest("nav, header");
   });
-  const firstCta = ctas.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
-  const ctaBox = firstCta?.getBoundingClientRect();
+  // A form's submit is its call to action even while it's disabled or dimmed until the form is filled in.
+  const submit = [...document.querySelectorAll("form button[type=submit], form button:not([type]), form input[type=submit]")].find((el) => visible(el) && !el.closest("nav, header") && [...el.form.elements].some((e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) && e.type !== "hidden" && visible(e)));
+  const firstCta = [...ctas, ...(submit ? [submit] : [])].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+  // A form's submit button sits at the end by design: there the first action is the form's first field.
+  const formStart = firstCta && firstCta.form ? [...firstCta.form.elements].find((e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) && e.type !== "hidden" && visible(e)) : null;
+  const ctaBox = (formStart || firstCta)?.getBoundingClientRect();
 
   // Template tells.
   const tells = [];
@@ -201,11 +249,14 @@ const INSPECT = (opts) => {
   }
 
   return {
+    assets: [...document.querySelectorAll("script[src], link[rel=stylesheet][href]")].map((e) => e.getAttribute("src") || e.getAttribute("href")).filter((u) => !/googletagmanager|analytics|cdn-cgi/.test(u)).sort(),
+    signals: { footer: !!document.querySelector("footer, [role=contentinfo]"), tablist: !!document.querySelector("[role=tablist], [role=application], [role=toolbar]"), controls: [...document.querySelectorAll("input:not([type=hidden]), select, textarea")].filter(visible).length },
     title: document.title, description: meta("description"), ogImage: meta("og:image"), lang: document.documentElement.lang || null,
     viewportMeta: !!document.querySelector('meta[name="viewport"]'), pageHeight: document.documentElement.scrollHeight,
     h1s, fonts: [...families].slice(0, 12),
-    firstScreen: { h1Words: h1 ? h1.innerText.trim().split(/\s+/).length : null, h1Bottom: h1Box ? Math.round(h1Box.bottom) : null, h1Lines: h1Box && h1 ? Math.round(h1Box.height / (parseFloat(getComputedStyle(h1).lineHeight) || parseFloat(getComputedStyle(h1).fontSize) * 1.1)) : null, h1Size: h1 ? parseFloat(getComputedStyle(h1).fontSize) : null, cta: firstCta ? { text: firstCta.innerText.trim().replace(/\s+/g, " ").slice(0, 40), top: Math.round(ctaBox.top), height: Math.round(ctaBox.height), inView: ctaBox.bottom <= vh } : null },
-    text: { small, smallSamples, lowContrast: lowContrast.slice(0, 8), lowContrastCount: lowContrast.length, measured, unmeasured },
+    firstScreen: { h1Words: h1 ? h1.innerText.trim().split(/\s+/).length : null, h1Bottom: h1Box ? Math.round(h1Box.bottom) : null, h1Lines: h1Box && h1 ? Math.round(h1Box.height / (parseFloat(getComputedStyle(h1).lineHeight) || parseFloat(getComputedStyle(h1).fontSize) * 1.1)) : null, h1Size: h1 ? parseFloat(getComputedStyle(h1).fontSize) : null, cta: firstCta ? { text: formStart ? `${firstCta.innerText.trim().slice(0, 30)} (a form: its first field)` : firstCta.innerText.trim().replace(/\s+/g, " ").slice(0, 40), top: Math.round(ctaBox.top), height: Math.round(ctaBox.height), inView: ctaBox.bottom <= vh } : null },
+    text: { small, smallSamples, smallList, lowContrast: lowContrast.slice(0, 60), lowContrastCount: lowContrast.length, measured, unmeasured },
+    themes: (() => { let media = false, darkClass = false; const walk = (rules) => { for (const r of rules) { const m = r.conditionText || r.media?.mediaText || ""; if (/prefers-color-scheme:\s*dark/.test(m)) media = true; if (r.selectorText && /(^|[\s,])\.dark[\s:,]|:where\(\.dark/.test(r.selectorText)) darkClass = true; if (r.cssRules) walk(r.cssRules); } }; for (const st of document.styleSheets) { try { walk(st.cssRules); } catch {} } return { media, darkClass, current: matchMedia("(prefers-color-scheme: dark)").matches || document.documentElement.classList.contains("dark") ? "dark" : "light" }; })(),
     taps: { count: taps.length, samples: taps.slice(0, 6) }, overflow: { overflow, wide },
     images: { total: imgs.length, broken, noAlt, oversized }, tells, overlay, sections, headerHeight: header ? Math.round(header.getBoundingClientRect().height) : 0,
   };
@@ -220,8 +271,8 @@ try {
     const pageReport = { url, views: {} };
     say("INFO", `── ${url}`);
     for (const v of VIEWS) {
-      const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, deviceScaleFactor: v.mobile ? 2 : 1, isMobile: v.mobile, hasTouch: v.mobile, userAgent: v.mobile ? "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" : undefined });
-      await ctx.addInitScript(OBSERVE);
+      const ctx = await newContext(browser, base, { viewport: { width: v.width, height: v.height }, deviceScaleFactor: v.mobile ? 2 : 1, isMobile: v.mobile, hasTouch: v.mobile, userAgent: v.mobile ? "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" : undefined });
+      await ctx.addInitScript(OBSERVE); await ctx.addInitScript(HELPERS);
       const page = await ctx.newPage();
       const errors = []; const failed = [];
       page.on("console", (m) => { if (m.type() === "error" && !/status of 413|cdn-cgi/.test(m.text())) errors.push(m.text().slice(0, 200)); });
@@ -254,6 +305,15 @@ try {
           if (existsSync(file)) crops.push({ file: `sections/${String(i + 1).padStart(2, "0")}.jpg`, ...s });
         }
       }
+      if (!kind) {
+        const sg = dom.signals;
+        // A tool fits one screen and is driven by tabs and inputs; a website scrolls through sections.
+        const oneScreen = dom.pageHeight <= v.height * 1.3;
+        // A page with both a description and a share image is made to be found and shared: a website.
+        const shared = dom.description && dom.ogImage;
+        kind = heroOnly || shared ? "site" : (!dom.description && !dom.ogImage) || (oneScreen && !sg.footer && (sg.tablist || sg.controls >= 2)) ? "app" : "site";
+        say("INFO", `judged as ${kind === "app" ? "an app screen: call-to-action, SEO, share card and template-tell checks skipped" : "a website"} (--kind ${kind === "app" ? "site" : "app"} to change)`);
+      }
       const view = { ...v, loadMs, lcpMs: vitals.lcp != null ? Math.round(vitals.lcp) : null, lcpEl: vitals.lcpEl, cls: Math.round(cls * 1000) / 1000, transferKB: Math.round(vitals.transfer / 1024), requests: vitals.requests, consoleErrors: [...new Set(errors)].slice(0, 8), failedRequests: [...new Set(failed)].slice(0, 8), ...dom, crops };
       pageReport.views[v.name] = view;
       await ctx.close();
@@ -267,24 +327,63 @@ try {
       if (view.consoleErrors.length) say("WARN", `${n} ${view.consoleErrors.length} console error(s): ${view.consoleErrors[0]}`);
       if (view.failedRequests.length) say("WARN", `${n} ${view.failedRequests.length} failed request(s): ${view.failedRequests[0]}`);
       if (view.overflow.overflow) say("FAIL", `${n} sideways scroll: ${view.overflow.wide[0] ?? "content wider than the screen"}`);
-      if (view.h1s.length !== 1) say("WARN", `${n} ${view.h1s.length} visible <h1> (want exactly one)`);
+      const site = kind === "site";
+      if (view.h1s.length !== 1) say(site ? "WARN" : "INFO", `${n} ${view.h1s.length} visible <h1> (want exactly one)`);
       if (view.overlay) say("WARN", `${n} a popup covers the first screen on arrival (${view.overlay}); the call-to-action check below may be reading it`);
       const fs = view.firstScreen;
-      if (fs.cta) say(fs.cta.inView ? "PASS" : "FAIL", `${n} first call to action "${fs.cta.text}" at ${fs.cta.top}px, ${fs.cta.inView ? "in" : "below"} the first screen`);
+      if (!site) {} else if (fs.cta) say(fs.cta.inView ? "PASS" : "FAIL", `${n} first call to action "${fs.cta.text}" at ${fs.cta.top}px, ${fs.cta.inView ? "in" : "below"} the first screen`);
       else say("WARN", `${n} no filled call-to-action button found outside the nav`);
       if (fs.h1Lines != null) say(v.mobile && fs.h1Lines > 4 ? "WARN" : "INFO", `${n} headline ${fs.h1Size}px, ${fs.h1Lines} line(s), ${fs.h1Words} words`);
       if (heroOnly && !v.mobile && fs.h1Words > 12) say("WARN", `${n} headline is ${fs.h1Words} words (a hero reads best at 8 or fewer)`);
-      if (view.text.lowContrastCount) say("WARN", `${n} ${view.text.lowContrastCount} text element(s) under WCAG contrast, e.g. ${view.text.lowContrast[0].el} ${view.text.lowContrast[0].ratio}:1 (${view.text.unmeasured} over images not measured)`);
+      if (view.text.lowContrastCount) say("WARN", `${n} ${view.text.lowContrastCount} text element(s) under WCAG contrast, e.g. ${view.text.lowContrast[0].label} ${view.text.lowContrast[0].ratio}:1 (${view.text.unmeasured} over images not measured)`);
       if (view.text.small) say("WARN", `${n} ${view.text.small} text element(s) under 12px, e.g. ${view.text.smallSamples[0]}`);
-      if (v.mobile && view.taps.count) say("WARN", `${n} ${view.taps.count} tap target(s) under 44px, e.g. ${view.taps.samples[0]}`);
+      // Tap targets: interaction-check.mjs measures them against WCAG 2.5.8 (24px with spacing); not repeated here.
       if (view.images.broken.length) say("FAIL", `${n} ${view.images.broken.length} broken image(s): ${view.images.broken[0]}`);
       if (view.images.oversized.length) say("WARN", `${n} oversized image(s): ${view.images.oversized[0]}`);
       if (view.images.noAlt) say("WARN", `${n} ${view.images.noAlt} visible image(s) without alt`);
       if (view.fonts.length > 3) say("WARN", `${n} ${view.fonts.length} font families: ${view.fonts.join(", ")}`);
-      for (const t of view.tells) say("WARN", `${n} template tell: ${t}`);
+      // The same verdicts as findings, so compare.mjs can tell fixed / still there / new.
+      const w = v.width;
+      for (const c of view.text.lowContrast) O.add({ type: "low-contrast", el: c.el, selector: c.selector, owner: c.owner, classes: c.classes, detail: `${c.ratio}:1 at ${c.size}px (needs ${c.need}:1)`, severity: c.ratio < c.need - 1.5 ? "fail" : "warn", width: w, fix: "darken/lighten the text (or its background) until it reaches the ratio; muted text on dark grounds usually needs ~#a1a1aa or lighter" });
+      for (const t of view.text.smallList) O.add({ type: "small-text", el: t.el, selector: t.selector, owner: t.owner, classes: t.classes, detail: `${t.size}px text`, severity: "info", width: w, fix: "12px is the floor for anything people need to read; badges and keyboard hints can stay small" });
+      for (const b of view.images.broken) O.add({ type: "broken-image", el: b, detail: "image failed to load", severity: "fail", width: w });
+      for (const b of view.images.oversized) O.add({ type: "oversized-image", el: b, detail: "much larger than shown", severity: "warn", width: w, fix: "serve a size near the displayed width (srcset/sizes, next/image)" });
+      if (view.images.noAlt) O.add({ type: "no-alt", el: `${view.images.noAlt} image(s)`, detail: "visible image without alt", severity: "warn", width: w, fix: 'alt="what it shows" (alt="" for decoration)' });
+      for (const e of view.consoleErrors) O.add({ type: "console-error", el: e.slice(0, 80), detail: "", severity: "warn", width: w });
+      for (const e of view.failedRequests) O.add({ type: "failed-request", el: e.slice(0, 100), detail: "", severity: "warn", width: w });
+      if (site && view.h1s.length !== 1) O.add({ type: "h1-count", el: "<h1>", detail: `${view.h1s.length} visible h1`, severity: "warn", width: w, fix: "exactly one h1 that says what the page is" });
+      if (site && !fs.cta) O.add({ type: "no-cta", el: "first screen", detail: "no filled call-to-action outside the nav", severity: "warn", width: w });
+      else if (site && !fs.cta.inView) O.add({ type: "cta-below-fold", el: fs.cta.text, detail: `first call to action at ${fs.cta.top}px, below the first screen`, severity: "fail", width: w });
+      if (site) for (const t of view.tells) O.add({ type: "template-tell", el: t, detail: "", severity: "info", width: w });
+      if (site) for (const t of view.tells) say("WARN", `${n} template tell: ${t}`);
     }
     const d = pageReport.views.desktop;
-    if (d) {
+    if (d && kind === "site") {
+      if (!d.description) O.add({ type: "seo", el: "<head>", detail: "no meta description", severity: "warn" });
+      if (!d.ogImage) O.add({ type: "seo", el: "<head>", detail: "no og:image", severity: "warn" });
+    }
+    if (d && !d.viewportMeta) O.add({ type: "viewport-meta", el: "<head>", detail: "no viewport meta tag", severity: "fail" });
+
+    // Dark theme: when the CSS has one (prefers-color-scheme or a .dark class) and the run used the other,
+    // look again in dark: contrast is where a second theme usually breaks.
+    if (d && (d.themes.media || d.themes.darkClass) && d.themes.current !== "dark" && !args.includes("--no-dark")) {
+      const ctx = await newContext(browser, base, { viewport: { width: VIEWS[0].width, height: VIEWS[0].height }, colorScheme: "dark" });
+      await ctx.addInitScript(HELPERS);
+      if (!d.themes.media) await ctx.addInitScript(() => { document.addEventListener("DOMContentLoaded", () => document.documentElement.classList.add("dark")); });
+      const page = await ctx.newPage();
+      try {
+        await page.goto(url, { waitUntil: "load", timeout: 45_000 }); await page.waitForTimeout(1200);
+        await page.screenshot({ path: join(pageDir, "desktop-first-dark.jpg"), type: "jpeg", quality: 82 });
+        const dark = await page.evaluate(INSPECT, { mobile: false });
+        for (const c of dark.text.lowContrast) O.add({ type: "low-contrast", el: c.el, selector: c.selector, owner: c.owner, classes: c.classes, detail: `${c.ratio}:1 at ${c.size}px in the dark theme (needs ${c.need}:1)`, severity: c.ratio < c.need - 1.5 ? "fail" : "warn", width: VIEWS[0].width, fix: "set the dark theme's own text colour for it (dark:text-…); colours tuned on white rarely survive on black" });
+        say(dark.text.lowContrastCount ? "WARN" : "PASS", `dark theme (${d.themes.media ? "prefers-color-scheme" : ".dark class"}): ${dark.text.lowContrastCount} text element(s) under WCAG contrast${dark.text.lowContrastCount ? `, e.g. ${dark.text.lowContrast[0].label} ${dark.text.lowContrast[0].ratio}:1` : ""} · desktop-first-dark.jpg`);
+      } catch (e) { say("INFO", `dark theme not checked: ${String(e.message).split("\n")[0]}`); }
+      await ctx.close();
+    }
+    if (d && kind === "app") {
+      if (!d.title) say("WARN", "no <title> (tabs and history show the URL)");
+      if (!d.viewportMeta) say("FAIL", "no viewport meta tag");
+    } else if (d) {
       if (!d.title) say("WARN", "no <title>"); else if (d.title.length > 65) say("WARN", `title is ${d.title.length} characters (search results cut at about 60)`);
       if (!d.description) say("WARN", "no meta description"); if (!d.ogImage) say("WARN", "no og:image (links shared on X, Slack and LinkedIn show no picture)");
       if (!d.viewportMeta) say("FAIL", "no viewport meta tag");
@@ -295,5 +394,6 @@ try {
 } finally {
   await browser.close();
 }
-writeFileSync(join(outDir, "review.json"), JSON.stringify({ ...report, lines }, null, 2));
+writeFileSync(join(outDir, "review.json"), JSON.stringify({ ...report, kind, lines }, null, 2));
+O.write(outDir, { url: base, kind, assets: report.pages[0]?.views?.desktop?.assets || [] });
 console.log(`\n→ ${outDir}/review.json · screenshots: desktop-first.jpg, phone-first.jpg${heroOnly ? "" : ", *-full.jpg, sections/"}`);

@@ -53,3 +53,45 @@ writing, it is marked (unverified).
   Font, Package bundling (`next analyze`) https://nextjs.org/docs/app/api-reference/components/image
 - DebugBear, network throttling methods https://debugbear.com/blog/network-throttling-methods
 - web-vitals attribution build https://github.com/GoogleChrome/web-vitals
+
+## Contrast
+
+- WCAG 2.2 Understanding 1.4.3 Contrast (Minimum): 4.5:1 for text, 3:1 for large text (24 px, or 18.66 px bold).
+  https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+- The background is read from the hit-test stack (`document.elementsFromPoint`) at the middle of each text's
+  first line, compositing semi-transparent layers down to the first opaque one, so a positioned pill or card
+  behind the text counts. https://developer.mozilla.org/en-US/docs/Web/API/Document/elementsFromPoint
+
+## Fragile layouts, keyboard widgets, field data
+
+- Pseudo-localisation: lengthening strings ~30-40 % to find layouts that break when translated. W3C
+  Internationalization, text size in translation https://www.w3.org/International/articles/article-text-size
+- WAI-ARIA APG Tabs pattern (arrow keys, roving tabindex) https://www.w3.org/WAI/ARIA/apg/patterns/tabs/ ·
+  Slider pattern https://www.w3.org/WAI/ARIA/apg/patterns/slider/
+- WCAG 2.2 Understanding 2.1.1 Keyboard https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html
+- Chrome UX Report API https://developer.chrome.com/docs/crux/api · PageSpeed Insights API
+  https://developers.google.com/speed/docs/insights/v5/get-started
+- Visual regression by screenshot diffing, with self-changing regions masked: the approach of Playwright's
+  `toHaveScreenshot` https://playwright.dev/docs/test-snapshots
+- Design Skills Library, accessibility-skill before/after study: the screen-reader list from Chrome's
+  accessibility tree, focus visibility checked by screenshot, the 320px reflow test, forced-colours screenshots,
+  findings tagged with WCAG criterion and who they affect, REVIEW items for a person. Its own figures (a 56-check
+  benchmark, "68% of screen-reader users start by headings") are its claims, not re-checked here.
+  https://design-skills-library.vercel.app/a11y/
+- WCAG 2.2 Understanding 2.5.3 Label in Name https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html ·
+  1.4.11 Non-text Contrast https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html · 1.4.10 Reflow
+  https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+- MDN forced-colors https://developer.mozilla.org/en-US/docs/Web/CSS/@media/forced-colors · Chrome DevTools
+  Protocol Accessibility.getFullAXTree https://chromedevtools.github.io/devtools-protocol/tot/Accessibility/
+
+## Folded-in skills
+
+Condensed and rewritten from three agent skills (read in full before use):
+
+- *better-accessibility* (jakubkrehel/skills): WCAG 2.2 criteria per finding, severity rules, focus and keyboard
+  patterns, the before-you-finish grep → `accessibility.md`. https://github.com/jakubkrehel/skills
+- *web-quality-audit* and *accessibility* (addyosmani/web-quality-skills, MIT): evidence-led audits, the
+  Lighthouse pass via Chrome DevTools MCP, "a score of 100 is not conformance" → `accessibility.md`, step 2.
+  https://github.com/addyosmani/web-quality-skills
+- *break-ui* (emilkowalski/skills): plausible worst-case data, the failure-signature table, truncate / wrap /
+  clamp → `worst-case.md`. https://github.com/emilkowalski/skills

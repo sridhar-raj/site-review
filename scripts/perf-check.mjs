@@ -2,7 +2,13 @@
 // perf-check.mjs: measure page speed properly and say why it is slow.
 //
 //   node perf-check.mjs <url> [--out .review] [--runs 3] [--profile mobile|desktop] [--cpu 4]
-//        [--no-throttle] [--no-interact] [--coverage]
+//        [--no-throttle] [--no-interact] [--coverage] [--field]
+//
+// --field   real-user numbers (p75 over 28 days, Chrome UX Report) for a public URL: the CrUX API when
+//           CRUX_API_KEY is set (fast), else PageSpeed Insights' field section (slower; key-less calls share
+//           one daily quota, so set PSI_API_KEY for your own). The page's
+//           URL is sent to Google; never used for localhost or private hosts. Lab numbers here are a floor; field
+//           numbers are what visitors get.
 //
 // Cold runs in fresh browser contexts with Lighthouse's mobile throttling (Slow 4G: 150 ms RTT, 1.6 Mbps,
 // applied as 562.5 ms / 1.47 Mbps; CPU 4×; on an Apple-silicon Mac consider --cpu 6) and the medians of: TTFB,
@@ -13,7 +19,7 @@
 // controls are clicked to measure interaction latency (INP-like) with its phases. Measure a production build:
 // a dev server is detected and called out.
 
-import { parseArgs, toUrl, loadChromium, outDir, HELPERS, installHelpers, dismissPopups, Findings } from "./lib.mjs";
+import { newContext, parseArgs, toUrl, loadChromium, outDir, HELPERS, installHelpers, dismissPopups, Findings } from "./lib.mjs";
 
 const { opt, has, target } = parseArgs(["--out", "--runs", "--profile", "--cpu"]);
 if (!target) { console.error("usage: perf-check.mjs <url> [--out .review] [--runs 3] [--profile mobile|desktop] [--cpu 4] [--no-throttle] [--no-interact] [--coverage]"); process.exit(2); }
@@ -77,8 +83,13 @@ const COLLECT = () => {
   for (const r of res) { const t = /\.(m?js)(\?|$)/.test(r.name) || r.initiatorType === "script" ? "js" : /\.css(\?|$)/.test(r.name) || r.initiatorType === "css" && /\.css/.test(r.name) ? "css" : /\.(woff2?|ttf|otf)(\?|$)/.test(r.name) ? "font" : r.initiatorType === "img" || /\.(png|jpe?g|webp|avif|gif|svg)(\?|$)/.test(r.name) || /_next\/image/.test(r.name) ? "image" : /\.(mp4|webm|mov)(\?|$)/.test(r.name) ? "video" : "other";
     byType[t] = (byType[t] || 0) + (r.transferSize || 0); total += r.transferSize || 0;
     let o = ""; try { o = new URL(r.name).origin; } catch {} byOrigin[o] = (byOrigin[o] || 0) + (r.transferSize || 0); }
-  const blocking = res.filter((r) => r.renderBlockingStatus === "blocking").map((r) => r.name);
-  const blockingFiles = res.filter((r) => r.renderBlockingStatus === "blocking").map((r) => ({ url: r.name, kb: Math.round((r.transferSize || 0) / 1024), end: Math.round(r.responseEnd) }));
+  // Chrome marks every parser-blocking file "blocking", even a script at the end of <body>; one that comes after
+  // the page's content in the document can't hold up that content's first paint, so it isn't counted.
+  const content = document.querySelector("main, h1, [role=main]");
+  const after = new Set([...document.querySelectorAll("body script[src]")].filter((s) => content && (content.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) && !content.contains(s)).map((s) => s.src));
+  const isBlocking = (r) => r.renderBlockingStatus === "blocking" && !after.has(r.name);
+  const blocking = res.filter(isBlocking).map((r) => r.name);
+  const blockingFiles = res.filter(isBlocking).map((r) => ({ url: r.name, kb: Math.round((r.transferSize || 0) / 1024), end: Math.round(r.responseEnd) }));
   const dpr = devicePixelRatio;
   const imgs = [...document.images].filter((i) => i.naturalWidth && sr.visible(i)).map((i) => { const r = i.getBoundingClientRect(); const e = res.find((x) => x.name === i.currentSrc); return { src: i.currentSrc, el: sr.label(i), selector: sr.cssPath(i), owner: sr.owner(i), classes: sr.classes(i), ratio: i.naturalWidth / Math.max(1, r.width * dpr), shown: Math.round(r.width), natural: i.naturalWidth, above: r.top < innerHeight, lazy: i.loading === "lazy", bytes: e?.transferSize || 0, sized: i.hasAttribute("width") }; });
   const fonts = res.filter((r) => /\.(woff2?|ttf|otf)(\?|$)/.test(r.name)).map((r) => ({ url: r.name, bytes: r.transferSize }));
@@ -93,7 +104,7 @@ const COLLECT = () => {
 };
 
 async function oneRun(i) {
-  const ctx = await browser.newContext({ viewport: P.viewport, deviceScaleFactor: P.dpr, isMobile: P.mobile, hasTouch: P.mobile, userAgent: P.mobile ? "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36" : undefined });
+  const ctx = await newContext(browser, url, { viewport: P.viewport, deviceScaleFactor: P.dpr, isMobile: P.mobile, hasTouch: P.mobile, userAgent: P.mobile ? "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36" : undefined });
   await ctx.addInitScript(HELPERS); await ctx.addInitScript(OBSERVE);
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);
@@ -155,7 +166,7 @@ if (L && S.lcp) {
   if (L.video) F.add({ ...base, type: "lcp-video-poster", detail: `the LCP is a video's poster (${(L.url || "").split("/").pop().split("?")[0].slice(0, 50)}), which the browser fetches late and at low priority`, severity: "warn", fix: '<link rel="preload" as="image" href="poster" fetchpriority="high"> (Next: ReactDOM.preload in the layout), or show an <Image fetchPriority="high"> first frame and fade the video in; preload="none" on the video' });
   if (L.bg) F.add({ ...base, type: "lcp-background", detail: "the LCP is a CSS background image, found late", severity: "warn", fix: 'make it an <img>/<Image> with fetchpriority="high", or <link rel="preload" as="image" fetchpriority="high">' });
   if (L.initiator === "script" || L.initiator === "fetch" || L.initiator === "xmlhttprequest") F.add({ ...base, type: "lcp-client", detail: "the LCP is rendered by JavaScript on the client", severity: "warn", fix: "render the hero on the server (Server Component); push 'use client' down to the interactive leaf" });
-  if (L.renderDelay > Math.max(400, S.lcp * 0.3)) F.add({ ...base, type: "lcp-render-delay", detail: `the LCP paints ${Math.round(L.renderDelay)}ms after it's ready${L.anim ? ` (entrance animation on ${L.anim})` : " (hidden, animated in, waiting for fonts/JS, or client-rendered)"}`, severity: "warn", fix: "don't start the LCP element at opacity:0 or animate it in; animate a wrapper from opacity 0.01 or skip the first-paint animation" });
+  if (L.renderDelay > Math.max(400, S.lcp * 0.3)) F.add({ ...base, type: "lcp-render-delay", kind: S.lcp > 2500 ? "issue" : "suggestion", detail: `the LCP paints ${Math.round(L.renderDelay)}ms after it's ready${L.anim ? ` (entrance animation on ${L.anim})` : " (hidden, animated in, waiting for fonts/JS, or client-rendered)"}`, severity: "warn", fix: "don't start the LCP element at opacity:0 or animate it in; animate a wrapper from opacity 0.01 or skip the first-paint animation" });
   if (L.transfer > 200 * 1024) F.add({ ...base, type: "lcp-heavy", detail: `the LCP image is ${Math.round(L.transfer / 1024)} KB`, severity: "warn", fix: "AVIF/WebP via next/image (images.formats: ['image/avif','image/webp']) and correct sizes; target ≤ 150 KB" });
 }
 
@@ -220,7 +231,37 @@ if (L) console.log(`LCP element: ${L.el}${L.url ? ` (${L.url.split("/").pop().sl
 if (third.length) console.log(`third-party main-thread time: ${third.slice(0, 4).map(([o, ms]) => `${o.replace(/^https?:\/\//, "")} ${Math.round(ms)}ms`).join(", ")}`);
 if (interactions.length) console.log(`interactions tested: ${interactions.length}, slowest ${interactions[0].d}ms (${interactions[0].el})`);
 if (runs.length > 1 && spread("lcp") > 20) console.log(`note: LCP varied ${spread("lcp")}% between runs; use --runs 5+ before comparing`);
+// Field data (opt-in, public URLs only).
+let field = null;
+if (has("--field")) {
+  const pub = /^https:\/\//.test(url) && !/^https:\/\/(localhost|127\.|10\.|192\.168\.|[^/]*\.local\b)/.test(url);
+  if (!pub) console.log("field data: skipped (only for public https URLs)");
+  else {
+    try {
+      const metric = (p75, good, poor) => ({ p75, rating: p75 == null ? null : p75 <= good ? "good" : p75 <= poor ? "needs improvement" : "poor" });
+      if (process.env.CRUX_API_KEY) {
+        const res = await fetch(`https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=${process.env.CRUX_API_KEY}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, formFactor: profile === "desktop" ? "DESKTOP" : "PHONE" }) });
+        const j = await res.json();
+        if (j.record) { const m2 = j.record.metrics; const p = (k) => (m2[k] ? Number(m2[k].percentiles.p75) : null);
+          field = { source: "CrUX API (this URL)", lcp: metric(p("largest_contentful_paint"), 2500, 4000), inp: metric(p("interaction_to_next_paint"), 200, 500), cls: metric(p("cumulative_layout_shift"), 0.1, 0.25), fcp: metric(p("first_contentful_paint"), 1800, 3000), ttfb: metric(p("experimental_time_to_first_byte"), 800, 1800) }; }
+        else field = { source: "CrUX API", none: j.error?.message || "no record (not enough traffic)" };
+      } else {
+        const res = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${profile === "desktop" ? "desktop" : "mobile"}&category=performance${process.env.PSI_API_KEY ? `&key=${process.env.PSI_API_KEY}` : ""}`);
+        const j = await res.json();
+        const le = j.loadingExperience?.metrics && Object.keys(j.loadingExperience.metrics).length ? j.loadingExperience : j.originLoadingExperience;
+        if (le?.metrics) { const p = (k) => le.metrics[k]?.percentile ?? null; const scope = le === j.loadingExperience ? "this URL" : "whole origin";
+          field = { source: `PageSpeed Insights field data (${scope})`, lcp: metric(p("LARGEST_CONTENTFUL_PAINT_MS"), 2500, 4000), inp: metric(p("INTERACTION_TO_NEXT_PAINT"), 200, 500), cls: metric(p("CUMULATIVE_LAYOUT_SHIFT_SCORE") != null ? p("CUMULATIVE_LAYOUT_SHIFT_SCORE") / 100 : null, 0.1, 0.25), fcp: metric(p("FIRST_CONTENTFUL_PAINT_MS"), 1800, 3000), ttfb: metric(p("EXPERIMENTAL_TIME_TO_FIRST_BYTE"), 800, 1800) }; }
+        else field = { source: "PageSpeed Insights", none: j.error?.message || "no field data (not enough Chrome traffic)" };
+      }
+      if (field.none) console.log(`field data: ${/quota/i.test(field.none) ? "the shared key-less quota is used up today; set CRUX_API_KEY (or PSI_API_KEY), a free Google Cloud key, for your own quota" : field.none}`);
+      else {
+        console.log(`field (p75, ${field.source}): ${["lcp", "inp", "cls", "fcp", "ttfb"].filter((k) => field[k].p75 != null).map((k) => `${k.toUpperCase()} ${field[k].p75}${k === "cls" ? "" : "ms"} ${field[k].rating}`).join(" · ")}`);
+        for (const k of ["lcp", "inp", "cls"]) if (field[k].rating && field[k].rating !== "good") F.add({ type: `field-${k}`, el: "real visitors (p75)", detail: `${k.toUpperCase()} ${field[k].p75}${k === "cls" ? "" : "ms"} is ${field[k].rating} for real visitors (${field.source})`, severity: field[k].rating === "poor" ? "fail" : "warn", fix: "the lab findings above show the likely causes; field numbers move about 28 days after a fix ships" });
+      }
+    } catch (e) { console.log(`field data: failed (${String(e.message).split("\n")[0]})`); }
+  }
+}
 const summary = F.print();
-F.write(out, { url, mode, medians: S, lcp: L, byType: Object.fromEntries(Object.entries(m.byType).map(([k, v]) => [k, kb(v)])), thirdParty: Object.fromEntries(third.slice(0, 8)), interactions: interactions.slice(0, 8), runs: runs.map((r) => ({ lcp: r.m.lcp?.t, cls: r.m.cls, tbt: r.m.tbt, kb: kb(r.m.total) })), seconds: Math.round((Date.now() - t0) / 1000) });
+F.write(out, { url, mode, field, medians: S, lcp: L, byType: Object.fromEntries(Object.entries(m.byType).map(([k, v]) => [k, kb(v)])), thirdParty: Object.fromEntries(third.slice(0, 8)), interactions: interactions.slice(0, 8), runs: runs.map((r) => ({ lcp: r.m.lcp?.t, cls: r.m.cls, tbt: r.m.tbt, kb: kb(r.m.total) })), seconds: Math.round((Date.now() - t0) / 1000) });
 console.log(`${Math.round((Date.now() - t0) / 1000)} s`);
 process.exit(summary.fails ? 1 : 0);

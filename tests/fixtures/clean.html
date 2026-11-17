@@ -12,7 +12,8 @@
   header { position: sticky; top: 0; height: 64px; background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 16px; padding: 0 16px; z-index: 10; }
   header a, button { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; }
   .hero { min-height: 80svh; background: #eef; padding: 40px 16px; }
-  .hero h1 { font-size: clamp(2rem, 6vw, 4rem); line-height: 1.1; margin: 0 0 16px; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 4rem); line-height: 1.1; margin: 0 0 16px; text-wrap: balance; }
+  h2, h3 { text-wrap: balance; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
   .card { background: #f4f4f4; border: 1px solid #ccc; padding: 16px; border-radius: 12px; }
@@ -20,16 +21,28 @@
   .tags { display: flex; flex-wrap: wrap; gap: 8px; }
   .tags span { padding: 4px 10px; background: #ddd; border-radius: 999px; }
   .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #555; }
-  button { background: #111; color: #fff; border: 0; border-radius: 8px; cursor: pointer; transition: background-color 150ms ease-out; }
+  button { background: #111; color: #fff; border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: background-color 150ms ease-out; }
   button:hover { background: #333; }
   button:focus-visible, a:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
   #target { margin-top: 300px; }
+  .seg { position: relative; display: inline-grid; grid-template-columns: repeat(3, auto); background: #222; border-radius: 999px; padding: 2px; margin: 16px 0; }
+  .seg .pill { position: absolute; top: 2px; bottom: 2px; left: 2px; width: 90px; background: #fcfcfc; border-radius: 999px; }
+  .seg button { position: relative; z-index: 1; background: transparent; color: #ddd; width: 90px; padding: 0 8px; justify-content: center; border-radius: 999px; }
+  .seg button:hover { color: #fff; background: #333; }
+  .seg button[aria-selected="true"] { color: #111; background: transparent; }
+  .seg button[aria-selected="true"]:hover { background: transparent; color: #111; }
+  .hcard { padding: 12px; border: 1px solid #ccc; border-radius: 12px; margin: 16px 0; }
+  .hbtn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; background: #eee; color: #111; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+  .hcard:hover .hbtn { background: #ddd; }             /* hover set on a card four levels up */
+  .hbtn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  select { font: 16px system-ui, sans-serif; height: 44px; padding: 0 12px; }
+  select.custom { appearance: none; padding: 0 36px 0 14px; border-radius: 999px; background: #f4f4f4; border: 1px solid #ccc; }
   @media (max-width: 767.98px) { .m { color: #444; } }
   @media (min-width: 768px) { .m { color: #222; } }
 </style>
 </head>
 <body>
-<header><a href="#target">Jump</a><a href="#">About</a></header>
+<header><a href="#target">Jump</a><a href="app.html">App</a></header>
 <section class="hero"><h1>A clean page with nothing broken</h1><button>Start free</button></section>
 <main>
   <div class="grid">
@@ -38,6 +51,19 @@
     <div class="card"><img alt="Three" width="320" height="180" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'/%3E"><h3>Card three</h3><p>More text that wraps.</p></div>
   </div>
   <div class="tags"><span>One</span><span>Two</span><span>Three</span></div>
+  <div class="seg" role="tablist"><span class="pill"></span><button role="tab" aria-selected="true">Create</button><button role="tab" aria-selected="false" tabindex="-1">Batch</button><button role="tab" aria-selected="false" tabindex="-1">Code</button></div>
+  <script>
+    // The ARIA tabs pattern: arrows move between tabs (roving tabindex).
+    document.querySelector(".seg").addEventListener("keydown", (e) => {
+      const tabs = [...e.currentTarget.querySelectorAll("[role=tab]")]; const i = tabs.indexOf(document.activeElement);
+      if (i < 0 || !/^Arrow(Left|Right)$/.test(e.key)) return;
+      const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      tabs.forEach((t) => t.tabIndex = -1); n.tabIndex = 0; n.focus(); e.preventDefault();
+    });
+  </script>
+  <p><label>Kind <select><option>Creative</option><option>Functional</option></select></label>
+     <label>Template <select class="custom"><option>Template: Auto</option><option>Moment</option></select></label></p>
+  <div class="hcard"><div><div><div><span class="hbtn" role="button" tabindex="0" onclick="void 0" onkeydown="void 0">Card action</span></div></div></div></div>
   <p class="m">No breakpoint clash here.</p>
   <h2 id="target">Anchor target</h2>
 <div style="height:1400px"></div>

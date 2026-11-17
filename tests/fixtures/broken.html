@@ -22,6 +22,13 @@
   .card { background: #f4f4f4; border: 1px solid #ccc; width: 200px; padding: 8px; }
   .card img { width: 260px; height: 40px; display: block; background: #999; }   /* sticks out */
   .fixedh { height: 40px; overflow: hidden; width: 160px; }               /* text cut at the bottom */
+  .tabs { display: grid; grid-template-columns: repeat(4, 64px); background: #222; border-radius: 999px; }
+  .tabs button { background: #fcfcfc; color: #111; border: 0; border-radius: 999px; white-space: nowrap; height: 34px; }  /* "Create with AI" in 64px: runs past the pill */
+  .squeeze { display: flex; gap: 6px; width: 200px; }
+  .squeeze select { flex: 1 1 0; min-width: 0; appearance: none; padding: 0 32px 0 14px; font: 13px system-ui, sans-serif; height: 34px; }  /* chosen option cut */
+  .fragile { width: 120px; white-space: nowrap; padding: 0 14px; font: 16px system-ui, sans-serif; height: 40px; background: #111; color: #fff; border: 0; }  /* fits now, not with longer copy */
+  .fab { position: fixed; top: 112px; left: 24px; width: 150px; height: 44px; background: #333; color: #fff; border: 0; border-radius: 22px; z-index: 5; }  /* floats over the headline */
+  .hb { width: 300px; font-size: 32px; line-height: 1.15; }   /* a <br> meant for desktop strands a word */
   #target { margin-top: 400px; }
   @media (max-width: 768px) { .m { color: red; } }
   @media (min-width: 768px) { .m { color: blue; } }                       /* both apply at 768 */
@@ -30,7 +37,9 @@
 <body>
 <header><a href="#target">Jump</a><span>Nav</span></header>
 <section class="hero"><h1>Hero that uses 100vh</h1></section>
+<button class="fab">Feedback</button>
 <div class="wide">This box is 700px wide and pushes the page sideways on phones.</div>
+<h2 class="hb">New templates and features,<br>in your inbox.</h2>
 <h2 class="clip">A heading that is far too long for its box and gets cut</h2>
 <div class="box"><p class="over-a">Overlapping text one</p><p class="over-b">Overlapping text two</p></div>
 <div class="cover-wrap"><p>This paragraph is hidden behind a dark box that sits on top of it.</p><div class="cover"></div></div>
@@ -38,6 +47,9 @@
 <p class="grad">Typography</p>
 <div class="card"><img alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='40'/%3E"><p>Card text</p></div>
 <button class="fixedh">A button label that wraps onto three lines and gets cut</button>
+<div class="tabs"><button>Create with AI</button><button>Batch</button><button>Code</button><button>Site</button></div>
+<div class="squeeze"><select><option>Creative</option></select><select><option>Auto</option></select><select><option>Template: Auto</option></select><button>Build</button></div>
+<p><button class="fragile">Get started</button></p>
 <p class="m">Media query clash</p>
 <img alt="Unsized" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='200'/%3E">
 <h2 id="target">Anchor target</h2>

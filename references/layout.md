@@ -49,6 +49,19 @@ Ellipsis and line-clamp are often intended (card excerpts). The check flags them
 | Card `overflow-hidden` (for rounded corners) cutting text | move the clip to the media wrapper; let the card grow |
 | Descenders cut: `leading-none`/`leading-[0.9]` with `bg-clip-text` or `overflow-hidden` | `leading-[1.1]`+, or `pb-[0.12em] -mb-[0.12em]` (the gradient paints only inside the line box) |
 | Long translations | IFix: change the shared font-size/width for all siblings |
+| A `<select>` (or `input type=button`) squeezed by a flex/grid share: the chosen option is cut, often to a letter or two ("Te" for "Template: Auto"). Its text is not a text node, so it is measured separately: option width against the room inside the padding (a custom chevron lives in `padding-right`) | `w-auto`/`min-w-[…]` for the longest option, `flex-wrap` on the row, or a shorter label on phones |
+
+### Text wider than its own button or tab — `text-overflow`
+
+With `overflow: visible` nothing is clipped, yet the text runs past the button's background: in a segmented
+control the last letters leave the white pill and vanish into the dark bar ("Create with A"). Flagged on
+buttons, links, tabs and labels, and on any box with a background or border, when the text is more than 2 px
+wider than the box.
+
+| Cause | Fix |
+|---|---|
+| Equal grid columns (`grid-cols-4`) narrower than the longest label | `grid-cols-[repeat(4,auto)]` / `flex`, or hide the icon / shorten the label below `sm` |
+| `whitespace-nowrap` with a fixed width | drop the width (`px-3`), or allow two lines |
 
 ## Text over text, covered text, protrusion — `text-overlap`, `covered-text`, `protrusion`
 
@@ -108,3 +121,19 @@ Good is CLS ≤ 0.1 (aim ≤ 0.02 on a marketing page).
 
 `data-review-allow="overflow|clip|overlap|cover|protrude|wrap|all"` on the element or an ancestor, with a
 comment in the code saying why.
+
+## Fragile layouts — the stress pass
+
+A layout that fits today's copy by a few pixels breaks on the first longer translation, product name or
+number. After the normal sweep, the page is loaded again with every word about 30 % longer (its own letters
+repeated, so the font and script stay the same; German and French run 30-40 % longer than English) and every
+number two digits longer (a badge of 7 becomes 172), and the audit runs again at 320, 375, 390, 768, 1024 and
+1440 px. Findings that appear only then are marked `stress` and listed as **Fragile** (warn): not broken yet,
+but one copy change away. Code, keyboard hints and anything with `data-review-allow="stress"` are left as
+they are. Off with `--no-stress`.
+
+| Fragile because | Fix |
+|---|---|
+| Fixed widths sized to the label (`w-[120px]` on a button, equal `grid-cols-4` tabs) | size to content (`w-auto px-4`), `min-w-*` instead of `w-*` |
+| `whitespace-nowrap` on labels in a row | let the row wrap (`flex-wrap`) or allow two lines |
+| A badge or counter in a tight nav | reserve room for 3-4 digits (`min-w-[2ch] tabular-nums`), or cap the shown number (99+) |

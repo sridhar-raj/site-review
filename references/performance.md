@@ -76,3 +76,14 @@ Google Fonts `<link>`, and a server-rendered first screen instead of a client-re
 | `fonts` | one variable font via `next/font`, `subsets: ['latin']`, `adjustFontFallback` on, unused weights dropped; `display: 'optional'` when the swap's shift matters more than the brand font on first view; static sites: self-hosted WOFF2 with `<link rel=preload as=font crossorigin>` and a size-adjusted fallback (Fontaine/Capsize) |
 | `video` | `<video muted playsInline autoPlay loop preload="none" poster="/hero.avif">`, the source swapped in after load or on visibility, ≤ 1-2 MB, a still on phones |
 | WebGL/canvas | start after LCP (`requestIdleCallback`), pause off-screen and on `visibilitychange`, DPR ≤ 2, a static poster underneath, a still under reduced motion |
+
+## Field data (`--field`)
+
+Lab runs are a floor; visitors' devices and networks decide. `--field` adds the Chrome UX Report's p75 over
+the last 28 days for a **public https URL** (never localhost; the URL is sent to Google): the CrUX API when
+`CRUX_API_KEY` is set (fast, this URL), else PageSpeed Insights' field section (slower; key-less calls share one daily quota that runs out, so set
+`PSI_API_KEY`, a free Google Cloud key; falls
+back to the whole origin when the URL has too little traffic). LCP, INP and CLS that are not "good" become
+`field-lcp` / `field-inp` / `field-cls` findings. Thresholds: LCP 2.5 / 4 s, INP 200 / 500 ms, CLS 0.1 / 0.25.
+Field numbers trail a fix by about 28 days: prove a speed fix in the lab (same settings, medians), and say
+when the field will show it.

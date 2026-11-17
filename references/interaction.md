@@ -17,6 +17,7 @@ popup open on arrival closed first, the way a visitor would.
 | `cursor` | a clickable `div`/`button` shows the arrow | `cursor-pointer`; Tailwind v4 changed buttons to `cursor: default`: `@layer base { button:not(:disabled), [role="button"] { cursor: pointer } }` |
 | `popup-offscreen` | a menu/tooltip opens past the edge | collision handling: Floating UI `flip()`/`shift()`, Radix `avoidCollisions`, CSS anchor positioning |
 | `popup-covered` | it opens behind content: an ancestor's `transform`/`filter` traps its z-index, or a card's `overflow-hidden` | a portal (Radix `Portal`, `createPortal` to body) or the `popover` attribute |
+| `state-unannounced` | one control in a row (tabs, segmented buttons, nav) looks selected but carries no state: screen readers can't tell which one is on | tabs: `role="tab" aria-selected`; nav: `aria-current="page"`; toggles: `aria-pressed`. A control with any of these (or Radix `data-state="active"`) is not flagged for `no-hover`: the current item often has no hover on purpose |
 | Flicker | the hover state moves the element out from under the pointer (`hover:-translate-y-2` on a chip) | keep the hit box still: `group` on the wrapper, `group-hover:-translate-y-1` on the inner child |
 
 In v4 `hover:` is already inside `@media (hover: hover)`, so content revealed on hover must start visible on
@@ -35,6 +36,46 @@ delay the first one ~300-500 ms, the rest instant.
 | `positive-tabindex` (2.4.3) | `tabindex` 0 or none; order the DOM. CSS `order`, `flex-row-reverse` and grid placement also scramble the reading order |
 | `focus-trap` (2.1.2) | trap only inside an open modal and release it on close |
 | `no-skip-link` (2.4.1) | first in `<body>`: `<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50">Skip to content</a>` and `<main id="main" tabIndex={-1}>` |
+
+## Custom widgets with the keyboard
+
+| Finding | Fix |
+|---|---|
+| `not-focusable` (WCAG 2.1.1) | something has a click handler (or a widget role) but Tab never reaches it: use `<button>` (or `<a href>` to navigate); a div needs `tabIndex={0}`, a role and key handlers |
+| `no-key-activation` | a focusable fake button that ignores Enter and Space: use `<button>`; otherwise `onKeyDown` calls the click handler for Enter and Space |
+| `tablist-arrows` | `role="tablist"` promises the ARIA tabs pattern: arrows move between tabs, Tab leaves the list. Radix Tabs / Headless UI do it; by hand, a roving `tabIndex` (0 on the selected tab, -1 on the rest) and ArrowLeft/Right/Home/End. A row of page links is navigation, not tabs: drop `role="tab"` and use `aria-current="page"` instead |
+| `slider-keys` | `role="slider"` must step with the arrow keys and update `aria-valuenow`; or use `<input type="range">` / Radix Slider |
+
+## Screen readers, voice control and contrast themes (always run)
+
+| Finding | Fix |
+|---|---|
+| `image-name` (1.1.1) | `alt` that says what it shows; `alt=""` for decoration; a logo's alt is the company name. "image", "photo" or a file name is not a name |
+| `label-in-name` (2.5.3) | the button shows "Try it free" but is announced "Get started for free": voice-control users say what they see and nothing happens. Start the `aria-label` with the visible words, or drop it |
+| `no-h1`, `no-main-landmark` | most screen-reader users start a page by its headings or jump to main: one `h1` (visually hidden in an app shell if needed) and `<main id="main">` |
+| `captions-review` (1.2.2) | needs a person: a video with speech needs `<track kind="captions">`; a muted decorative loop needs none |
+| `forced-colors-edge` | Windows contrast themes remove author backgrounds: a filled button with no border becomes floating text. `border border-transparent` (the transparent border is drawn in the theme), or a `forced-colors:` variant |
+| `forced-colors-icon` | icons with a fixed `fill`/`stroke` keep that colour on the theme's ground (dark grey on black vanishes): `fill="currentColor"` |
+
+`reader.txt` lists the page as Chrome's accessibility tree has it (the data screen readers read), in order:
+landmarks, headings with levels, links, buttons, fields, images; ✗ marks anything without a name. Read it top
+to bottom: does it make sense without the screen? `forced-colors.jpg` is the page in a contrast theme.
+Focus visibility is judged by screenshot (the stop's box focused and not), so a ring the colour of the
+background counts as missing and a ring drawn by a parent counts as present.
+
+## Without axe: the built-in basics
+
+When `@axe-core/playwright` isn't installed, the check runs the failures axe reports most, so a review never
+ships with no accessibility check at all, and says so in its summary:
+
+| Finding | Fix |
+|---|---|
+| `no-accessible-name` | icon-only buttons and links: `aria-label`, or visually hidden text (`<span class="sr-only">`) |
+| `no-label` / `placeholder-label` | a visible `<label htmlFor>`, or `aria-label`; a placeholder disappears once you type |
+| `no-lang` | `<html lang="en">` (Next: in `app/layout.tsx`) |
+| `heading-skip` (info) | keep levels in order; style with classes, not by picking a smaller tag |
+
+Install axe for the rest (colour contrast in context, ARIA validity, landmarks, duplicate IDs, list structure).
 
 ## Menus, dialogs, drawers
 

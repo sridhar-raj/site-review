@@ -53,6 +53,42 @@ What premium first screens share, and what generic ones lack:
 - 1: filler words ("unlock", "seamless", "supercharge", "next-generation", "the future of"), invented-looking
   stats, logos nobody knows in grey, broken interactions.
 
+## App screens (`--kind app`)
+
+A tool, dashboard or admin screen is not selling anything: there is no call to action to find, no share card,
+no template tells to count. Score Clarity as "can a new user tell what this screen does and what to do first",
+Look and Hierarchy as usual, Mobile and Speed from the scripts, and replace Trust & copy with **States**:
+empty, loading, error, disabled and selected states all exist and look designed; the selected item is
+announced (`aria-selected`/`aria-current`/`aria-pressed`); labels are short enough for the controls they sit in.
+`--kind auto` (the default) treats a page as an app when it has no description and no share image, or fits one
+screen with tabs or form controls and no footer; the overview prints which it chose.
+
+## Worked examples (anchors)
+
+Scores drift between reviewers unless they are anchored. These are real pages scored with the reasons; score a
+new page by asking which anchor it is closer to.
+
+**Originkit builder, Maker screen** (`/maker`, an app screen, 2026-11-16) · Clarity 4 · Look 4 · Hierarchy 4 ·
+Mobile 2 · Speed — (dev server, not measured) · States 3
+- Clarity 4: "What are we building?" plus a drop zone and one Build button: a new user knows what to do. Not 5:
+  four mode tabs with equal weight above the form compete with it.
+- Look 4: one dark palette, one orange accent, quiet type, a calm glow behind the form. Not 5: nothing on it is
+  memorable; it could be any tool.
+- Hierarchy 4: one focal column, clear reading order, consistent spacing. Not 5: the selects in the form row
+  are squeezed until "Template: Auto" reads "Template: Autc" at 1440 px.
+- Mobile 2: at 320-440 px the nav labels pile on top of each other and the status pill runs off the screen; the
+  selects show one or two letters. Usable, but visibly broken on every phone.
+- States 3: the selected tab has a state for screen readers (`aria-selected`, `aria-pressed`); the prompt box
+  has no focus ring; the selects trigger iOS zoom.
+
+**Generic anchors**
+- *Mobile 5*: a page where layout-check finds nothing at any width and the stress pass finds nothing either.
+  *Mobile 3*: one bug at the narrowest widths. *Mobile 1*: sideways scroll or overlapping text at 390 px.
+- *Look 5*: you could not swap the logo for a competitor's and keep the page; one moment you'd remember.
+  *Look 3*: a tidy template. *Look 1*: three or more template tells, stock imagery, default fonts.
+- *Clarity 5*: a stranger says what it is and who it's for after 5 seconds of the first screen. *Clarity 1*:
+  a slogan that fits any company and two equal buttons.
+
 ## Template tells
 
 Each is fine once, with a reason; together they read as AI-made or templated: a centred headline with one
